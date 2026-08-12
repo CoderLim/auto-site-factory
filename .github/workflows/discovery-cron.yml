@@ -1,0 +1,53 @@
+name: Discovery Cron
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub cron is UTC. This runs five times per day at 00:17, 05:17,
+    # 10:17, 15:17 and 20:17 UTC (roughly every five hours).
+    - cron: "17 0,5,10,15,20 * * *"
+
+concurrency:
+  group: discovery-cron
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SOURCE_TARGETS_FILE: config/source-targets.json
+      REDDIT_ACCESS_TOKEN: ${{ secrets.REDDIT_ACCESS_TOKEN }}
+      REDDIT_USER_AGENT: auto-site-factory/0.1 by CoderLim
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+      LLM_API_URL: ${{ secrets.LLM_API_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require database
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+
+      - run: npm install
+      - run: npm run build
+
+      - name: Migrate database
+        run: node packages/database/dist/migrate.js
+
+      - name: Sync source targets
+        run: node apps/worker/dist/sync-targets.js
+
+      - name: Run discovery once
+        run: node apps/worker/dist/index.js --once
