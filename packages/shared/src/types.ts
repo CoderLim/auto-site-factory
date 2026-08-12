@@ -46,14 +46,43 @@ export interface RawSignal {
   fingerprint: string
 }
 
+export interface SitemapUrlEntry {
+  url: string
+  keyword?: string
+}
+
+export interface SitemapReconcileResult {
+  initialized: boolean
+  pendingUrls: string[]
+  pendingCount: number
+}
+
+export interface SitemapStateStore {
+  reconcile(
+    targetId: string,
+    entries: SitemapUrlEntry[],
+    seenAt: Date,
+    baselineOnFirstRun: boolean,
+    limit: number
+  ): Promise<SitemapReconcileResult>
+  markEmitted(targetId: string, urls: string[], emittedAt: Date): Promise<void>
+  updateMetadata(
+    targetId: string,
+    url: string,
+    metadata: { pageTitle?: string; h1?: string }
+  ): Promise<void>
+}
+
 export interface CollectResult {
   signals: RawSignal[]
   nextCursor?: CursorState
+  afterPersist?: () => Promise<void>
 }
 
 export interface CollectorContext {
   now: Date
   fetch: typeof fetch
+  sitemapStore?: SitemapStateStore
 }
 
 export interface Collector {

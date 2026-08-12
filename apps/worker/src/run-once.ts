@@ -1,13 +1,14 @@
-import { Database, DiscoveryRepository } from "@factory/database"
+import { Database, DiscoveryRepository, SitemapRepository } from "@factory/database"
 import { getCollector, processPendingSignals } from "@factory/discovery"
-import { newId, type SourceTarget } from "@factory/shared"
+import { newId, type SignalSourceType, type SourceTarget } from "@factory/shared"
 
-const POLLING_SOURCES = new Set(["official_api", "wiki", "reddit", "youtube", "x", "sitemap"])
+const POLLING_SOURCES = new Set<SignalSourceType>(["official_api", "wiki", "reddit", "youtube", "x", "sitemap"])
 
 async function collectTarget(
   runId: string,
   target: SourceTarget,
-  repository: DiscoveryRepository
+  repository: DiscoveryRepository,
+  sitemapRepository: SitemapRepository
 ): Promise<{ inserted: number; failed: boolean; error?: string }> {
   const collector = getCollector(target.sourceType)
   if (!collector) return { inserted: 0, failed: false }
@@ -16,8 +17,13 @@ async function collectTarget(
   await repository.markCursorAttempt(target.id)
   try {
     const cursor = await repository.getCursor(target.id)
-    const result = await collector.collect(target, cursor, { now: new Date(), fetch })
+    const result = await collector.collect(target, cursor, {
+      now: new Date(),
+      fetch,
+      sitemapStore: target.sourceType === "sitemap" ? sitemapRepository : undefined
+    })
     const inserted = await repository.insertSignals(result.signals)
+    if (result.afterPersist) await result.afterPersist()
     if (result.nextCursor) await repository.saveCursor(target.id, result.nextCursor)
     await repository.finishRunTarget(runId, target.id, "SUCCESS", inserted)
     console.log(`[worker] ${target.sourceType}:${target.name} -> ${inserted} new signals`)
@@ -30,17 +36,20 @@ async function collectTarget(
   }
 }
 
-export async function runDiscoveryOnce(): Promise<void> {
+export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<void> {
   const db = new Database()
   const repository = new DiscoveryRepository(db)
+  const sitemapRepository = new SitemapRepository(db)
   const runId = newId("run")
   await repository.createRun(runId)
 
   try {
     const targets = (await repository.listEnabledTargets()).filter((target) =>
-      POLLING_SOURCES.has(target.sourceType)
+      POLLING_SOURCES.has(target.sourceType) && (!sourceType || target.sourceType === sourceType)
     )
-    const results = await Promise.all(targets.map((target) => collectTarget(runId, target, repository)))
+    const results = await Promise.all(
+      targets.map((target) => collectTarget(runId, target, repository, sitemapRepository))
+    )
     const signalCount = results.reduce((sum, item) => sum + item.inserted, 0)
     const failures = results.filter((item) => item.failed)
 
@@ -66,7 +75,7 @@ export async function runDiscoveryOnce(): Promise<void> {
       newCandidates,
       failures.map((item) => item.error).filter(Boolean).join(" | ") || undefined
     )
-    console.log(`[worker] run=${runId} status=${status} signals=${signalCount} processed=${processed} newCandidates=${newCandidates}`)
+    console.log(`[worker] run=${runId} source=${sourceType ?? "all"} status=${status} signals=${signalCount} processed=${processed} newCandidates=${newCandidates}`)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await repository.finishRun(runId, "FAILED", 0, 0, message)
