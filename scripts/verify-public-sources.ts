@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import type { SourceTarget } from "@factory/shared"
 import { officialApiCollector } from "../packages/discovery/src/collectors/official-api.js"
+import { sitemapCollector } from "../packages/discovery/src/collectors/sitemap.js"
 import { wikiCollector } from "../packages/discovery/src/collectors/wiki.js"
 
 const now = new Date()
@@ -76,6 +77,44 @@ async function verifyHuggingFace() {
   }
 }
 
+async function verifySitemap() {
+  const target: SourceTarget = {
+    id: "sitemap-lagged-smoke",
+    sourceType: "sitemap",
+    name: "Lagged text sitemap",
+    scope: "web-games",
+    enabled: true,
+    config: {
+      sitemapUrl: "https://lagged.com/sitemap.txt",
+      entityType: "GAME",
+      baselineOnFirstRun: false,
+      fetchPageMetadata: false,
+      curlFallback: true,
+      maxUrls: 100,
+      maxNewUrls: 5
+    }
+  }
+
+  const result = await sitemapCollector.collect(target, undefined, { now, fetch })
+  assert.ok(result.signals.length > 0, "Migrated sitemap collector returned no Lagged signals")
+  assert.ok(
+    result.signals.every((signal) => typeof signal.metadata.keyword === "string"),
+    "Migrated sitemap collector did not extract URL keywords"
+  )
+
+  return {
+    source: "sitemap",
+    endpoint: target.config.sitemapUrl,
+    transport: "legacy sitemap-monitor target through Factory sitemapCollector",
+    count: result.signals.length,
+    samples: result.signals.slice(0, 5).map((signal) => ({
+      title: signal.title,
+      keyword: signal.metadata.keyword,
+      url: signal.url
+    }))
+  }
+}
+
 function decodeHtml(value: string) {
   return value
     .replaceAll("&amp;", "&")
@@ -125,7 +164,7 @@ async function verifySteam() {
 
 async function main() {
   const results: unknown[] = []
-  for (const verify of [verifySteam, verifyFandom, verifyHuggingFace]) {
+  for (const verify of [verifySteam, verifyFandom, verifyHuggingFace, verifySitemap]) {
     const startedAt = Date.now()
     try {
       const result = await verify()
