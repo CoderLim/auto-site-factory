@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @factory/shared && npm run build -w @factory/database && npm run build -w @factory/discovery && npm run build -w @factory/worker && npm run build -w @factory/discord-gateway && npm run build -w @factory/api && npm run build -w @factory/dashboard",
+    "cloudflare:build": "npm run build -w @factory/shared && npm run build -w @factory/database && npm run build -w @factory/dashboard",
     "test": "npm run build -w @factory/shared && npm run test -w @factory/discovery",
     "check": "npm run build",
     "verify:public-sources": "npm run build -w @factory/shared && tsx scripts/verify-public-sources.ts",
