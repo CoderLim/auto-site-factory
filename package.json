@@ -11,6 +11,7 @@
     "build": "npm run build -w @factory/shared && npm run build -w @factory/database && npm run build -w @factory/discovery && npm run build -w @factory/worker && npm run build -w @factory/discord-gateway",
     "test": "npm run build -w @factory/shared && npm run test -w @factory/discovery",
     "check": "npm run build",
+    "verify:public-sources": "tsx scripts/verify-public-sources.ts",
     "worker": "npm run build && node --env-file=.env apps/worker/dist/index.js",
     "worker:once": "npm run build && node --env-file=.env apps/worker/dist/index.js --once",
     "targets:sync": "npm run build && node --env-file=.env apps/worker/dist/sync-targets.js",

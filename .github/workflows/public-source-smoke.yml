@@ -1,0 +1,23 @@
+name: Public Source Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/verify-public-sources.ts"
+      - ".github/workflows/public-source-smoke.yml"
+      - "package.json"
+
+jobs:
+  verify-public-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npm run verify:public-sources
