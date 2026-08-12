@@ -46,7 +46,12 @@ jobs:
       - name: Migrate database
         run: node packages/database/dist/migrate.js
 
-      - name: Sync source targets
+      - name: Sync core source targets
+        run: node apps/worker/dist/sync-targets.js
+
+      - name: Sync sitemap-monitor targets
+        env:
+          SOURCE_TARGETS_FILE: config/sitemap-targets.migrated.json
         run: node apps/worker/dist/sync-targets.js
 
       - name: Run discovery once
