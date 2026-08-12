@@ -51,6 +51,29 @@ export function configNumber(
   return typeof value === "number" && Number.isFinite(value) ? value : fallback
 }
 
+export function configBoolean(
+  config: Record<string, unknown>,
+  key: string,
+  fallback: boolean
+): boolean {
+  const value = config[key]
+  return typeof value === "boolean" ? value : fallback
+}
+
+export function configStringArray(
+  config: Record<string, unknown>,
+  key: string,
+  fallback: string[] = []
+): string[] {
+  const value = config[key]
+  if (typeof value === "string" && value.trim()) return [value.trim()]
+  if (!Array.isArray(value)) return fallback
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
 export function envFromConfig(
   config: Record<string, unknown>,
   key: string

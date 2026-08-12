@@ -1,10 +1,62 @@
 import type { Collector } from "@factory/shared"
-import { configString, makeSignal, requireConfigString } from "./base.js"
+import {
+  configNumber,
+  configString,
+  configStringArray,
+  makeSignal,
+  requireConfigString
+} from "./base.js"
 
 export function parseSitemapUrls(xml: string): string[] {
   return [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/gi)]
     .map((match) => match[1].replace(/&amp;/g, "&").trim())
     .filter(Boolean)
+}
+
+export function isSitemapIndex(xml: string): boolean {
+  return /<sitemapindex[\s>]/i.test(xml)
+}
+
+function matchesFilters(url: string, includes: string[], excludes: string[]): boolean {
+  if (includes.length > 0 && !includes.some((value) => url.includes(value))) return false
+  if (excludes.some((value) => url.includes(value))) return false
+  return true
+}
+
+async function collectSitemapUrls(
+  sitemapUrl: string,
+  fetchImpl: typeof fetch,
+  maxSitemaps: number,
+  maxUrls: number
+): Promise<string[]> {
+  const queue = [sitemapUrl]
+  const visited = new Set<string>()
+  const urls: string[] = []
+
+  while (queue.length > 0 && visited.size < maxSitemaps && urls.length < maxUrls) {
+    const current = queue.shift()
+    if (!current || visited.has(current)) continue
+    visited.add(current)
+
+    const response = await fetchImpl(current, { redirect: "follow" })
+    if (!response.ok) throw new Error(`Sitemap ${response.status}: ${current}`)
+    const xml = await response.text()
+    const locations = parseSitemapUrls(xml)
+
+    if (isSitemapIndex(xml)) {
+      for (const child of locations) {
+        if (!visited.has(child) && queue.length + visited.size < maxSitemaps) queue.push(child)
+      }
+      continue
+    }
+
+    for (const url of locations) {
+      urls.push(url)
+      if (urls.length >= maxUrls) break
+    }
+  }
+
+  return [...new Set(urls)]
 }
 
 function htmlText(value: string): string {
@@ -17,7 +69,10 @@ function htmlText(value: string): string {
     .trim()
 }
 
-async function fetchPageMetadata(url: string, fetchImpl: typeof fetch): Promise<{ title?: string; h1?: string }> {
+async function fetchPageMetadata(
+  url: string,
+  fetchImpl: typeof fetch
+): Promise<{ title?: string; h1?: string }> {
   try {
     const response = await fetchImpl(url, { redirect: "follow" })
     if (!response.ok) return {}
@@ -37,13 +92,31 @@ export const sitemapCollector: Collector = {
   type: "sitemap",
   async collect(target, cursor, context) {
     const sitemapUrl = requireConfigString(target.config, "sitemapUrl")
-    const response = await context.fetch(sitemapUrl)
-    if (!response.ok) throw new Error(`Sitemap ${response.status}: ${sitemapUrl}`)
-    const urls = parseSitemapUrls(await response.text())
-    const previous = new Set(Array.isArray(cursor?.seenUrls) ? cursor.seenUrls.filter((url): url is string => typeof url === "string") : [])
+    const maxSitemaps = Math.min(100, Math.max(1, configNumber(target.config, "maxSitemaps", 20)))
+    const maxUrls = Math.min(50_000, Math.max(100, configNumber(target.config, "maxUrls", 10_000)))
+    const maxNewUrls = Math.min(500, Math.max(1, configNumber(target.config, "maxNewUrls", 50)))
+    const includes = configStringArray(target.config, "urlIncludes")
+    const excludes = configStringArray(target.config, "urlExcludes")
+
+    const discoveredUrls = await collectSitemapUrls(
+      sitemapUrl,
+      context.fetch,
+      maxSitemaps,
+      maxUrls
+    )
+    const urls = discoveredUrls.filter((url) => matchesFilters(url, includes, excludes))
+
+    const previous = new Set(
+      Array.isArray(cursor?.seenUrls)
+        ? cursor.seenUrls.filter((url): url is string => typeof url === "string")
+        : []
+    )
     const initialized = cursor?.initialized === true
     const baselineOnFirstRun = target.config.baselineOnFirstRun !== false
-    const newUrls = !initialized && baselineOnFirstRun ? [] : urls.filter((url) => !previous.has(url))
+    const allNewUrls = !initialized && baselineOnFirstRun
+      ? []
+      : urls.filter((url) => !previous.has(url))
+    const newUrls = allNewUrls.slice(0, maxNewUrls)
     const shouldFetchMetadata = target.config.fetchPageMetadata !== false
 
     const signals = []
@@ -58,13 +131,18 @@ export const sitemapCollector: Collector = {
       }))
     }
 
+    const nextSeenUrls = !initialized && baselineOnFirstRun
+      ? urls
+      : [...new Set([...previous, ...newUrls])].slice(-maxUrls)
+
     return {
       signals,
       nextCursor: {
         initialized: true,
-        seenUrls: urls,
+        seenUrls: nextSeenUrls,
         snapshotAt: context.now.toISOString(),
-        sitemapUrl: configString(target.config, "sitemapUrl")
+        sitemapUrl: configString(target.config, "sitemapUrl"),
+        pendingNewUrls: Math.max(0, allNewUrls.length - newUrls.length)
       }
     }
   }

@@ -8,6 +8,7 @@ The repository currently implements **Layer 1: Signal Discovery** only.
 
 - Monorepo: `apps/worker`, `apps/discord-gateway`, `packages/discovery`, `packages/database`, `packages/shared`
 - Seven source types: Official API, Wiki, Reddit, YouTube, Discord, X, Sitemap
+- Concrete starter source registry covering AI, tools, Roblox/game ecosystems, and directory sitemap discovery
 - Five-hour polling worker for polling sources
 - Discord Gateway process for real-time `MESSAGE_CREATE` signals
 - Raw signal persistence with idempotent fingerprints
@@ -21,9 +22,10 @@ Layer 1 intentionally does **not** decide whether a keyword has search volume, l
 
 ## Quick start
 
+A real starter registry is committed at `config/source-targets.json`. Public sources are enabled by default; sources requiring API credentials or Discord access remain disabled until configured.
+
 ```bash
 cp .env.example .env
-cp config/source-targets.example.json config/source-targets.json
 
 docker compose up -d
 npm install
@@ -38,7 +40,7 @@ Run continuously every five hours:
 npm run worker
 ```
 
-For Discord realtime collection, configure one or more `discord` targets and run:
+For Discord realtime collection, complete the relay configuration described in [`docs/SOURCES.md`](docs/SOURCES.md), enable the Discord target, then run:
 
 ```bash
 npm run discord
@@ -46,9 +48,15 @@ npm run discord
 
 ## Source target configuration
 
-Targets are data, not hard-coded code. See `config/source-targets.example.json`.
+Targets are data, not hard-coded code.
+
+- [`config/source-targets.json`](config/source-targets.json): real starter registry used by the worker.
+- [`config/source-targets.example.json`](config/source-targets.example.json): minimal examples for each collector type.
+- [`docs/SOURCES.md`](docs/SOURCES.md): concrete source choices, enabled/disabled status, credentials, and Discord relay setup.
 
 Secrets should not be stored in target JSON. Store an environment variable name such as `YOUTUBE_API_KEY` in `apiKeyEnv`; the collector resolves it at runtime.
+
+YouTube targets support readable handles such as `@OpenAI`. X targets support readable usernames such as `AnthropicAI`; the collectors resolve numeric IDs at runtime.
 
 ## Data flow
 

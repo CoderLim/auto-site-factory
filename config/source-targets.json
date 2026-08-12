@@ -1,0 +1,357 @@
+[
+  {
+    "id": "hf-new-models",
+    "sourceType": "official_api",
+    "name": "Hugging Face New Models",
+    "scope": "ai",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "url": "https://huggingface.co/api/models?sort=createdAt&direction=-1&limit=100",
+      "idField": "id",
+      "nameFields": ["id"],
+      "nameTransform": "basename",
+      "publishedAtField": "createdAt",
+      "entityType": "AI_MODEL",
+      "cursorOverlapMinutes": 15
+    }
+  },
+  {
+    "id": "hf-new-spaces",
+    "sourceType": "official_api",
+    "name": "Hugging Face New Spaces",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "url": "https://huggingface.co/api/spaces?sort=createdAt&direction=-1&limit=100",
+      "idField": "id",
+      "nameFields": ["id"],
+      "nameTransform": "basename",
+      "publishedAtField": "createdAt",
+      "entityType": "TOOL",
+      "cursorOverlapMinutes": 15
+    }
+  },
+  {
+    "id": "github-comfyui-releases",
+    "sourceType": "official_api",
+    "name": "ComfyUI Releases",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "tracking",
+      "url": "https://api.github.com/repos/Comfy-Org/ComfyUI/releases?per_page=20",
+      "headers": { "Accept": "application/vnd.github+json" },
+      "idField": "id",
+      "nameFields": ["name", "tag_name"],
+      "publishedAtField": "published_at",
+      "contentField": "body",
+      "urlField": "html_url",
+      "directEntity": false,
+      "cursorOverlapMinutes": 15
+    }
+  },
+  {
+    "id": "github-claude-code-releases",
+    "sourceType": "official_api",
+    "name": "Claude Code Releases",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "tracking",
+      "url": "https://api.github.com/repos/anthropics/claude-code/releases?per_page=20",
+      "headers": { "Accept": "application/vnd.github+json" },
+      "idField": "id",
+      "nameFields": ["name", "tag_name"],
+      "publishedAtField": "published_at",
+      "contentField": "body",
+      "urlField": "html_url",
+      "directEntity": false,
+      "cursorOverlapMinutes": 15
+    }
+  },
+  {
+    "id": "github-codex-releases",
+    "sourceType": "official_api",
+    "name": "OpenAI Codex Releases",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "tracking",
+      "url": "https://api.github.com/repos/openai/codex/releases?per_page=20",
+      "headers": { "Accept": "application/vnd.github+json" },
+      "idField": "id",
+      "nameFields": ["name", "tag_name"],
+      "publishedAtField": "published_at",
+      "contentField": "body",
+      "urlField": "html_url",
+      "directEntity": false,
+      "cursorOverlapMinutes": 15
+    }
+  },
+  {
+    "id": "wiki-grow-a-garden",
+    "sourceType": "wiki",
+    "name": "Grow a Garden Wiki",
+    "scope": "grow-a-garden",
+    "enabled": true,
+    "config": {
+      "sourceRole": "tracking",
+      "apiUrl": "https://growagarden.fandom.com/api.php",
+      "namespace": 0,
+      "limit": 100
+    }
+  },
+  {
+    "id": "wiki-blox-fruits",
+    "sourceType": "wiki",
+    "name": "Blox Fruits Wiki",
+    "scope": "blox-fruits",
+    "enabled": true,
+    "config": {
+      "sourceRole": "tracking",
+      "apiUrl": "https://blox-fruits.fandom.com/api.php",
+      "namespace": 0,
+      "limit": 100
+    }
+  },
+  {
+    "id": "wiki-roblox",
+    "sourceType": "wiki",
+    "name": "Roblox Wiki",
+    "scope": "roblox",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "apiUrl": "https://roblox.fandom.com/api.php",
+      "namespace": 0,
+      "limit": 100
+    }
+  },
+  {
+    "id": "sitemap-futurepedia",
+    "sourceType": "sitemap",
+    "name": "Futurepedia Sitemap",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "sitemapUrl": "https://www.futurepedia.io/sitemap.xml",
+      "baselineOnFirstRun": true,
+      "fetchPageMetadata": true,
+      "maxSitemaps": 20,
+      "maxUrls": 10000,
+      "maxNewUrls": 50
+    }
+  },
+  {
+    "id": "sitemap-toolify",
+    "sourceType": "sitemap",
+    "name": "Toolify Sitemap",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "sitemapUrl": "https://www.toolify.ai/sitemap.xml",
+      "baselineOnFirstRun": true,
+      "fetchPageMetadata": true,
+      "maxSitemaps": 30,
+      "maxUrls": 20000,
+      "maxNewUrls": 50,
+      "urlExcludes": ["/vi/", "/de/", "/fr/", "/ja/", "/ko/", "/es/", "/pt/", "/ru/", "/ar/"]
+    }
+  },
+  {
+    "id": "reddit-localllama",
+    "sourceType": "reddit",
+    "name": "r/LocalLLaMA",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "discovery",
+      "subreddit": "LocalLLaMA",
+      "tokenEnv": "REDDIT_ACCESS_TOKEN",
+      "userAgentEnv": "REDDIT_USER_AGENT",
+      "limit": 100,
+      "maxPages": 3
+    }
+  },
+  {
+    "id": "reddit-roblox",
+    "sourceType": "reddit",
+    "name": "r/roblox",
+    "scope": "roblox",
+    "enabled": false,
+    "config": {
+      "sourceRole": "discovery",
+      "subreddit": "roblox",
+      "tokenEnv": "REDDIT_ACCESS_TOKEN",
+      "userAgentEnv": "REDDIT_USER_AGENT",
+      "limit": 100,
+      "maxPages": 3
+    }
+  },
+  {
+    "id": "reddit-steam",
+    "sourceType": "reddit",
+    "name": "r/Steam",
+    "scope": "steam",
+    "enabled": false,
+    "config": {
+      "sourceRole": "discovery",
+      "subreddit": "Steam",
+      "tokenEnv": "REDDIT_ACCESS_TOKEN",
+      "userAgentEnv": "REDDIT_USER_AGENT",
+      "limit": 100,
+      "maxPages": 3
+    }
+  },
+  {
+    "id": "reddit-sideproject",
+    "sourceType": "reddit",
+    "name": "r/SideProject",
+    "scope": "tools",
+    "enabled": false,
+    "config": {
+      "sourceRole": "discovery",
+      "subreddit": "SideProject",
+      "tokenEnv": "REDDIT_ACCESS_TOKEN",
+      "userAgentEnv": "REDDIT_USER_AGENT",
+      "limit": 100,
+      "maxPages": 3
+    }
+  },
+  {
+    "id": "youtube-openai",
+    "sourceType": "youtube",
+    "name": "OpenAI YouTube",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "handle": "@OpenAI",
+      "apiKeyEnv": "YOUTUBE_API_KEY",
+      "maxResults": 25
+    }
+  },
+  {
+    "id": "youtube-huggingface",
+    "sourceType": "youtube",
+    "name": "Hugging Face YouTube",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "handle": "@HuggingFace",
+      "apiKeyEnv": "YOUTUBE_API_KEY",
+      "maxResults": 25
+    }
+  },
+  {
+    "id": "youtube-valve",
+    "sourceType": "youtube",
+    "name": "Valve YouTube",
+    "scope": "steam-games",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "handle": "@Valve",
+      "apiKeyEnv": "YOUTUBE_API_KEY",
+      "maxResults": 25
+    }
+  },
+  {
+    "id": "x-openai",
+    "sourceType": "x",
+    "name": "OpenAI on X",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "username": "OpenAI",
+      "bearerTokenEnv": "X_BEARER_TOKEN",
+      "maxResults": 20
+    }
+  },
+  {
+    "id": "x-anthropic",
+    "sourceType": "x",
+    "name": "Anthropic on X",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "username": "AnthropicAI",
+      "bearerTokenEnv": "X_BEARER_TOKEN",
+      "maxResults": 20
+    }
+  },
+  {
+    "id": "x-huggingface",
+    "sourceType": "x",
+    "name": "Hugging Face on X",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "username": "huggingface",
+      "bearerTokenEnv": "X_BEARER_TOKEN",
+      "maxResults": 20
+    }
+  },
+  {
+    "id": "x-roblox",
+    "sourceType": "x",
+    "name": "Roblox on X",
+    "scope": "roblox",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "username": "Roblox",
+      "bearerTokenEnv": "X_BEARER_TOKEN",
+      "maxResults": 20
+    }
+  },
+  {
+    "id": "x-roblox-rtc",
+    "sourceType": "x",
+    "name": "Roblox RTC on X",
+    "scope": "roblox",
+    "enabled": false,
+    "config": {
+      "sourceRole": "discovery",
+      "username": "Roblox_RTC",
+      "bearerTokenEnv": "X_BEARER_TOKEN",
+      "maxResults": 20
+    }
+  },
+  {
+    "id": "discord-huggingface-relay",
+    "sourceType": "discord",
+    "name": "Hugging Face Discord Announcements Relay",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "upstreamName": "Hugging Face Discord",
+      "upstreamUrl": "https://hf.co/join/discord",
+      "channelPurpose": "announcements/releases",
+      "botTokenEnv": "DISCORD_BOT_TOKEN"
+    }
+  },
+  {
+    "id": "discord-grow-a-garden-relay",
+    "sourceType": "discord",
+    "name": "Grow a Garden Discord Announcements Relay",
+    "scope": "grow-a-garden",
+    "enabled": false,
+    "config": {
+      "sourceRole": "tracking",
+      "upstreamName": "Grow a Garden Official Discord",
+      "upstreamUrl": "https://discord.gg/growagarden",
+      "channelPurpose": "announcements/updates",
+      "botTokenEnv": "DISCORD_BOT_TOKEN"
+    }
+  }
+]
