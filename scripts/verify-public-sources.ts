@@ -102,13 +102,13 @@ async function verifySteam() {
   const appIds = [...html.matchAll(/data-ds-appid="(\d+)"/g)]
     .map((match) => match[1])
     .filter((value): value is string => Boolean(value))
-  const releaseDates = [...html.matchAll(/<div class="col search_released responsive_secondrow">\s*([^<]+?)\s*<\/div>/g)]
-    .map((match) => match[1]?.trim())
-    .filter((value): value is string => Boolean(value))
+  const releaseDates = [...html.matchAll(/<div[^>]*class="[^"]*search_released[^"]*"[^>]*>\s*([^<]*?)\s*<\/div>/g)]
+    .map((match) => decodeHtml(match[1]?.trim() ?? ""))
+    .filter(Boolean)
 
   assert.ok(titles.length >= 5, "Steam Store release-date search returned fewer than five titles")
   assert.ok(appIds.length >= 5, "Steam Store search did not expose app IDs")
-  assert.ok(releaseDates.length >= 5, "Steam Store search did not expose release dates")
+  assert.ok(releaseDates.length >= 5, `Steam Store search did not expose release dates (titles=${titles.length}, appIds=${appIds.length})`)
 
   return {
     source: "steam",
