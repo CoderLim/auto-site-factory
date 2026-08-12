@@ -19,9 +19,7 @@ function firstString(record: Record<string, unknown>, fields: string[]): string 
 }
 
 function transformName(value: string, strategy: string): string {
-  if (strategy === "basename") {
-    return value.split("/").filter(Boolean).at(-1) ?? value
-  }
+  if (strategy === "basename") return value.split("/").filter(Boolean).at(-1) ?? value
   return value
 }
 
@@ -36,14 +34,12 @@ export const officialApiCollector: Collector = {
   async collect(target, cursor, context) {
     const url = requireConfigString(target.config, "url")
     const headers: Record<string, string> = { Accept: "application/json" }
-
     const configuredHeaders = target.config.headers
     if (configuredHeaders && typeof configuredHeaders === "object" && !Array.isArray(configuredHeaders)) {
       for (const [key, value] of Object.entries(configuredHeaders)) {
         if (typeof value === "string") headers[key] = value
       }
     }
-
     const tokenEnv = configString(target.config, "tokenEnv")
     if (tokenEnv) {
       const scheme = configString(target.config, "tokenScheme", "Bearer")
@@ -68,28 +64,26 @@ export const officialApiCollector: Collector = {
     const directEntity = configBoolean(target.config, "directEntity", true)
     const nameTransform = configString(target.config, "nameTransform", "identity")
     const overlapMinutes = Math.max(0, configNumber(target.config, "cursorOverlapMinutes", 10))
+    const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
 
     const lastPublishedAt = typeof cursor?.lastPublishedAt === "string" ? cursor.lastPublishedAt : undefined
     const cutoff = lastPublishedAt
       ? new Date(new Date(lastPublishedAt).getTime() - overlapMinutes * 60 * 1000)
       : undefined
 
-    const signals = items.flatMap((item) => {
+    const candidateSignals = items.flatMap((item) => {
       if (!item || typeof item !== "object") return []
       const record = item as Record<string, unknown>
       const id = getPath(record, idField)
       const rawName = firstString(record, nameFields)
       if ((typeof id !== "string" && typeof id !== "number") || !rawName) return []
-
       const name = transformName(rawName, nameTransform)
       const publishedAt = parseDate(getPath(record, publishedAtField))
       if (cutoff && publishedAt && publishedAt <= cutoff) return []
-
       const contentValue = contentField ? getPath(record, contentField) : undefined
       const content = typeof contentValue === "string" ? contentValue : JSON.stringify(record)
       const urlValue = urlField ? getPath(record, urlField) : undefined
       const signalUrl = typeof urlValue === "string" ? urlValue : undefined
-
       return [makeSignal("official_api", target, String(id), {
         title: name,
         content,
@@ -97,21 +91,19 @@ export const officialApiCollector: Collector = {
         publishedAt,
         discoveredAt: context.now,
         metadata: {
-          ...(directEntity ? {
-            directEntity: name,
-            entityType: configString(target.config, "entityType", "OTHER")
-          } : {}),
+          ...(directEntity ? { directEntity: name, entityType: configString(target.config, "entityType", "OTHER") } : {}),
           rawEntityName: rawName,
           raw: record
         }
       })]
     })
 
-    const newest = signals
+    const newest = candidateSignals
       .map((signal) => signal.publishedAt?.toISOString())
       .filter((value): value is string => Boolean(value))
       .sort()
       .at(-1)
+    const signals = !lastPublishedAt && baselineOnFirstRun ? [] : candidateSignals
 
     return {
       signals,
