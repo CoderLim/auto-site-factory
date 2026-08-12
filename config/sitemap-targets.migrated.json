@@ -4,12 +4,15 @@
     "sourceType": "sitemap",
     "name": "Poki Games Sitemap",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrl": "https://poki.com/en/sitemaps/games.xml",
       "entityType": "GAME",
       "baselineOnFirstRun": true,
-      "fetchPageMetadata": true
+      "fetchPageMetadata": true,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -17,12 +20,15 @@
     "sourceType": "sitemap",
     "name": "CrazyGames Sitemap",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrl": "https://www.crazygames.com/en/sitemap",
       "entityType": "GAME",
       "baselineOnFirstRun": true,
-      "fetchPageMetadata": true
+      "fetchPageMetadata": true,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -30,8 +36,9 @@
     "sourceType": "sitemap",
     "name": "Gamepix Games Sitemaps",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrls": [
         "https://www.gamepix.com/sitemaps/games-1.xml",
         "https://www.gamepix.com/sitemaps/games-2.xml",
@@ -47,7 +54,8 @@
       "fetchPageMetadata": true,
       "curlFallback": true,
       "maxSitemaps": 50,
-      "maxUrls": 100000
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -55,12 +63,15 @@
     "sourceType": "sitemap",
     "name": "Lagged Text Sitemap",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrl": "https://lagged.com/sitemap.txt",
       "entityType": "GAME",
       "baselineOnFirstRun": true,
-      "fetchPageMetadata": true
+      "fetchPageMetadata": true,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -68,12 +79,15 @@
     "sourceType": "sitemap",
     "name": "Kizi Gzip Sitemap",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrl": "https://kizi.com/sitemaps/kizi/en/sitemap_games.xml.gz",
       "entityType": "GAME",
       "baselineOnFirstRun": true,
-      "fetchPageMetadata": true
+      "fetchPageMetadata": true,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -81,12 +95,15 @@
     "sourceType": "sitemap",
     "name": "Y8 Gzip Sitemap",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrl": "https://img.y8.com/sitemaps/y8/en/sitemap2.xml.gz",
       "entityType": "GAME",
       "baselineOnFirstRun": true,
-      "fetchPageMetadata": true
+      "fetchPageMetadata": true,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -94,12 +111,15 @@
     "sourceType": "sitemap",
     "name": "Miniplay Games Sitemap",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrl": "https://www.miniplay.com/sitemap-games-3.xml",
       "entityType": "GAME",
       "baselineOnFirstRun": true,
-      "fetchPageMetadata": true
+      "fetchPageMetadata": true,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   },
   {
@@ -107,8 +127,9 @@
     "sourceType": "sitemap",
     "name": "Playhop App Sitemaps",
     "scope": "web-games",
-    "enabled": false,
+    "enabled": true,
     "config": {
+      "sourceRole": "discovery",
       "sitemapUrls": [
         "https://playhop.com/sitemaps/sitemap.apps0.xml",
         "https://playhop.com/sitemaps/sitemap.apps1.xml",
@@ -118,7 +139,8 @@
       "baselineOnFirstRun": true,
       "fetchPageMetadata": true,
       "maxSitemaps": 20,
-      "maxUrls": 100000
+      "maxUrls": 100000,
+      "maxNewUrls": 50
     }
   }
 ]
