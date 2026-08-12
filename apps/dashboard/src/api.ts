@@ -41,9 +41,20 @@ export type SitemapAnomaly = {
   recordedAt?: string
 }
 
-const token = (import.meta.env.VITE_DASHBOARD_TOKEN as string | undefined)?.trim() || ""
+const TOKEN_KEY = "auto-site-factory-dashboard-token"
+
+export function getDashboardToken(): string {
+  return window.sessionStorage.getItem(TOKEN_KEY)?.trim() || ""
+}
+
+export function setDashboardToken(token: string): void {
+  const value = token.trim()
+  if (value) window.sessionStorage.setItem(TOKEN_KEY, value)
+  else window.sessionStorage.removeItem(TOKEN_KEY)
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getDashboardToken()
   const response = await fetch(path, {
     ...init,
     headers: {
@@ -68,7 +79,7 @@ export const api = {
   },
   runs: () => request<{ runs: SitemapRun[] }>("/api/sitemap/runs"),
   anomalies: () => request<{ anomalies: SitemapAnomaly[] }>("/api/sitemap/anomalies"),
-  run: () => request<{ status: string; pid?: number }>("/api/sitemap/run", { method: "POST" }),
+  run: () => request<{ status: string; workflow_run_id?: number; html_url?: string }>("/api/sitemap/run", { method: "POST" }),
   updateTarget: (target: SitemapTarget) => request(`/api/sitemap/targets/${encodeURIComponent(target.id)}`, {
     method: "PUT",
     body: JSON.stringify({
