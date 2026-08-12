@@ -16,3 +16,5 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npm test
+      - name: Build Cloudflare Pages Function
+        run: npx --yes wrangler@4.115.0 pages functions build functions --outfile=/tmp/pages-worker.js
