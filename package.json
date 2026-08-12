@@ -1,0 +1,28 @@
+{
+  "name": "auto-site-factory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @factory/shared && npm run build -w @factory/database && npm run build -w @factory/discovery && npm run build -w @factory/worker && npm run build -w @factory/discord-gateway",
+    "test": "npm run build -w @factory/shared && npm run test -w @factory/discovery",
+    "check": "npm run build",
+    "worker": "npm run build && node --env-file=.env apps/worker/dist/index.js",
+    "worker:once": "npm run build && node --env-file=.env apps/worker/dist/index.js --once",
+    "targets:sync": "npm run build && node --env-file=.env apps/worker/dist/sync-targets.js",
+    "discord": "npm run build && node --env-file=.env apps/discord-gateway/dist/index.js",
+    "db:migrate": "npm run build -w @factory/shared && npm run build -w @factory/database && node --env-file=.env packages/database/dist/migrate.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,89 @@
+[
+  {
+    "id": "wiki-example",
+    "sourceType": "wiki",
+    "name": "Example MediaWiki",
+    "scope": "example-game",
+    "enabled": false,
+    "config": {
+      "apiUrl": "https://example.fandom.com/api.php",
+      "namespace": 0,
+      "limit": 50
+    }
+  },
+  {
+    "id": "sitemap-example",
+    "sourceType": "sitemap",
+    "name": "Competitor Sitemap",
+    "scope": "example-game",
+    "enabled": false,
+    "config": {
+      "sitemapUrl": "https://example.com/sitemap.xml",
+      "baselineOnFirstRun": true,
+      "fetchPageMetadata": true
+    }
+  },
+  {
+    "id": "reddit-example",
+    "sourceType": "reddit",
+    "name": "r/LocalLLaMA",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "subreddit": "LocalLLaMA",
+      "tokenEnv": "REDDIT_ACCESS_TOKEN",
+      "userAgentEnv": "REDDIT_USER_AGENT",
+      "limit": 50
+    }
+  },
+  {
+    "id": "youtube-example",
+    "sourceType": "youtube",
+    "name": "Monitored YouTube Channel",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "channelId": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+      "apiKeyEnv": "YOUTUBE_API_KEY",
+      "maxResults": 25
+    }
+  },
+  {
+    "id": "x-example",
+    "sourceType": "x",
+    "name": "Monitored X Account",
+    "scope": "ai",
+    "enabled": false,
+    "config": {
+      "userId": "123456789",
+      "bearerTokenEnv": "X_BEARER_TOKEN",
+      "maxResults": 20
+    }
+  },
+  {
+    "id": "official-example",
+    "sourceType": "official_api",
+    "name": "Generic Official JSON API",
+    "scope": "example-product",
+    "enabled": false,
+    "config": {
+      "url": "https://api.example.com/releases",
+      "itemsPath": "items",
+      "idField": "id",
+      "nameField": "name",
+      "publishedAtField": "created_at"
+    }
+  },
+  {
+    "id": "discord-example",
+    "sourceType": "discord",
+    "name": "Discord Announcements",
+    "scope": "example-game",
+    "enabled": false,
+    "config": {
+      "guildId": "123",
+      "channelId": "456",
+      "botTokenEnv": "DISCORD_BOT_TOKEN"
+    }
+  }
+]
