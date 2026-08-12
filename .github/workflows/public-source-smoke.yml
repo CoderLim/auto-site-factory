@@ -8,6 +8,12 @@ on:
       - "scripts/verify-public-sources.ts"
       - ".github/workflows/public-source-smoke.yml"
       - "package.json"
+  pull_request:
+    paths:
+      - "scripts/verify-public-sources.ts"
+      - ".github/workflows/public-source-smoke.yml"
+      - "packages/discovery/src/collectors/sitemap*.ts"
+      - "package.json"
 
 jobs:
   verify-public-sources:

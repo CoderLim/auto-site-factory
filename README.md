@@ -6,8 +6,8 @@ The repository currently implements **Layer 1: Signal Discovery** only.
 
 ## Implemented in Layer 1
 
-- Monorepo: `apps/worker`, `apps/discord-gateway`, `packages/discovery`, `packages/database`, `packages/shared`
-- Seven source types: Official API, Wiki, Reddit, YouTube, Discord, X, Sitemap
+- Monorepo: `apps/worker`, `apps/discord-gateway`, `apps/api`, `apps/dashboard`, `packages/discovery`, `packages/database`, `packages/shared`
+- Seven source types: Official API, Wiki/Fandom, Reddit, YouTube, Discord, X, Sitemap
 - Concrete starter source registry covering AI, tools, Roblox/game ecosystems, and directory sitemap discovery
 - Five-hour polling worker for polling sources
 - Discord Gateway process for real-time `MESSAGE_CREATE` signals
@@ -17,6 +17,8 @@ The repository currently implements **Layer 1: Signal Discovery** only.
 - Conservative entity normalization and alias-ready entity registry
 - Entity mentions and candidate aggregation
 - Per-target/run status so one failing collector does not fail the entire batch
+- Production-oriented Sitemap subsystem migrated from `CoderLim/sitemap-monitor`
+- Sitemap Dashboard for new keywords, source management, manual runs and anomalies
 
 Layer 1 intentionally does **not** decide whether a keyword has search volume, low competition, or should become a website. Those belong to Layer 2.
 
@@ -40,11 +42,56 @@ Run continuously every five hours:
 npm run worker
 ```
 
+Run Sitemap only:
+
+```bash
+npm run sitemap:once
+```
+
 For Discord realtime collection, complete the relay configuration described in [`docs/SOURCES.md`](docs/SOURCES.md), enable the Discord target, then run:
 
 ```bash
 npm run discord
 ```
+
+## Sitemap Monitor integration
+
+The former standalone `CoderLim/sitemap-monitor` logic has been migrated into the Factory instead of being kept as a second stateful service.
+
+The Factory Sitemap Source now supports:
+
+- Multiple sitemap roots
+- Recursive sitemap indexes
+- XML, `sitemap.txt`, and gzip
+- Optional curl fallback for 403 responses
+- Baseline + incremental URL detection
+- URL slug keyword extraction
+- Stable trailing numeric ID removal
+- Page title/H1 enrichment
+- PostgreSQL-backed URL history instead of storing tens of thousands of URLs in cursor JSON
+- Backpressure via pending, not-yet-emitted Sitemap URLs
+
+The old game-site targets are converted to Factory config at [`config/sitemap-targets.migrated.json`](config/sitemap-targets.migrated.json). Details are in [`docs/SITEMAP.md`](docs/SITEMAP.md).
+
+## Dashboard
+
+The first Factory Web Dashboard is based on the old sitemap-monitor dashboard workflow.
+
+Terminal 1:
+
+```bash
+npm run api
+```
+
+Terminal 2:
+
+```bash
+npm run dashboard:dev
+```
+
+Open `http://127.0.0.1:5173`.
+
+The current Sitemap dashboard includes new keywords, 1/7/30 day ranges, site management, manual Sitemap-only collection, run history, anomalies, and Google Trends shortcuts.
 
 ## Source target configuration
 
@@ -52,6 +99,7 @@ Targets are data, not hard-coded code.
 
 - [`config/source-targets.json`](config/source-targets.json): real starter registry used by the worker.
 - [`config/source-targets.example.json`](config/source-targets.example.json): minimal examples for each collector type.
+- [`config/sitemap-targets.migrated.json`](config/sitemap-targets.migrated.json): old sitemap-monitor targets converted to Factory format.
 - [`docs/SOURCES.md`](docs/SOURCES.md): concrete source choices, enabled/disabled status, credentials, and Discord relay setup.
 
 Secrets should not be stored in target JSON. Store an environment variable name such as `YOUTUBE_API_KEY` in `apiKeyEnv`; the collector resolves it at runtime.
@@ -70,6 +118,18 @@ Source Targets
   -> Entity Registry
   -> Entity Mentions
   -> Candidate Pool (pending_validation)
+```
+
+For Sitemap specifically:
+
+```text
+Sitemap roots
+  -> XML/TXT/Gzip parser
+  -> sitemap_urls reconcile
+  -> New URL + slug keyword + title/H1
+  -> RawSignal
+  -> Entity
+  -> Candidate
 ```
 
 The full architecture is documented in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
