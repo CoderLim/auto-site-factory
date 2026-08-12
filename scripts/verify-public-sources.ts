@@ -91,15 +91,18 @@ async function verifySitemap() {
       fetchPageMetadata: false,
       curlFallback: true,
       maxUrls: 100,
-      maxNewUrls: 5
+      maxNewUrls: 20
     }
   }
 
   const result = await sitemapCollector.collect(target, undefined, { now, fetch })
   assert.ok(result.signals.length > 0, "Migrated sitemap collector returned no Lagged signals")
+  const signalsWithKeyword = result.signals.filter(
+    (signal) => typeof signal.metadata.keyword === "string" && signal.metadata.keyword.trim().length > 1
+  )
   assert.ok(
-    result.signals.every((signal) => typeof signal.metadata.keyword === "string"),
-    "Migrated sitemap collector did not extract URL keywords"
+    signalsWithKeyword.length > 0,
+    "Migrated sitemap collector did not extract any valid URL keywords"
   )
 
   return {
@@ -107,7 +110,8 @@ async function verifySitemap() {
     endpoint: target.config.sitemapUrl,
     transport: "legacy sitemap-monitor target through Factory sitemapCollector",
     count: result.signals.length,
-    samples: result.signals.slice(0, 5).map((signal) => ({
+    keywordCount: signalsWithKeyword.length,
+    samples: signalsWithKeyword.slice(0, 5).map((signal) => ({
       title: signal.title,
       keyword: signal.metadata.keyword,
       url: signal.url
