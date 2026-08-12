@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react"
-import { api, type SitemapAnomaly, type SitemapRun, type SitemapSignal, type SitemapTarget } from "./api"
+import { api, getDashboardToken, setDashboardToken, type SitemapAnomaly, type SitemapRun, type SitemapSignal, type SitemapTarget } from "./api"
 
 type Tab = "keywords" | "sites" | "runs" | "anomalies"
 const ranges = [{ value: "1d", label: "最近 1 天" }, { value: "7d", label: "最近 7 天" }, { value: "30d", label: "最近 30 天" }]
@@ -29,6 +29,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [token, setToken] = useState(() => getDashboardToken())
 
   const refreshCore = async () => {
     const [targetResult, runResult, anomalyResult] = await Promise.all([api.targets(), api.runs(), api.anomalies()])
@@ -42,20 +43,24 @@ export default function App() {
     setSignals(result.signals)
   }
 
+  const refreshAll = async () => {
+    setError("")
+    setLoading(true)
+    try {
+      await Promise.all([refreshCore(), refreshSignals()])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    void (async () => {
-      try {
-        setLoading(true)
-        await refreshCore()
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setLoading(false)
-      }
-    })()
+    void refreshAll()
   }, [])
 
   useEffect(() => {
+    if (loading) return
     void refreshSignals().catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [range, targetId])
 
@@ -68,12 +73,17 @@ export default function App() {
     })
   }, [signals])
 
+  const connect = async () => {
+    setDashboardToken(token)
+    await refreshAll()
+  }
+
   const runNow = async () => {
     setBusy(true)
     setError("")
     try {
-      await api.run()
-      setNotice("Sitemap 抓取已启动")
+      const result = await api.run()
+      setNotice(result.workflow_run_id ? `Discovery Cron 已启动 #${result.workflow_run_id}` : "Discovery Cron 已触发")
       window.setTimeout(() => void refreshCore(), 2500)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -136,7 +146,13 @@ export default function App() {
       <main>
         <header>
           <div><p className="eyebrow">DISCOVERY / SITEMAP</p><h1>{tab === "keywords" ? "新增关键词" : tab === "sites" ? "Sitemap 管理" : tab === "runs" ? "运行记录" : "异常中心"}</h1></div>
-          <button className="primary" onClick={runNow} disabled={busy}>{busy ? "启动中…" : "立即抓取 Sitemap"}</button>
+          <div className="header-actions">
+            <div className="token-control">
+              <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Dashboard token（如已配置）" />
+              <button onClick={() => void connect()}>连接</button>
+            </div>
+            <button className="primary" onClick={runNow} disabled={busy}>{busy ? "启动中…" : "立即抓取"}</button>
+          </div>
         </header>
 
         {error && <div className="alert error">{error}</div>}
