@@ -1,6 +1,14 @@
 {
-  "name": "auto-site-factory-dashboard",
-  "pages_build_output_dir": "apps/dashboard/dist",
-  "compatibility_date": "2026-08-12",
-  "compatibility_flags": ["nodejs_compat"]
+	"name": "auto-site-factory-dashboard",
+	"pages_build_output_dir": "apps/dashboard/dist",
+	"compatibility_date": "2026-08-12",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "272f62325a544d5f90638bfad99b36aa"
+		}
+	]
 }
