@@ -134,7 +134,7 @@
     "sourceType": "sitemap",
     "name": "Futurepedia Sitemap",
     "scope": "ai-tools",
-    "enabled": true,
+    "enabled": false,
     "config": {
       "sourceRole": "discovery",
       "sitemapUrl": "https://www.futurepedia.io/sitemap.xml",
@@ -150,7 +150,7 @@
     "sourceType": "sitemap",
     "name": "Toolify Sitemap",
     "scope": "ai-tools",
-    "enabled": true,
+    "enabled": false,
     "config": {
       "sourceRole": "discovery",
       "sitemapUrl": "https://www.toolify.ai/sitemap.xml",

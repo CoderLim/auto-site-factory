@@ -81,26 +81,29 @@ export class SitemapRepository implements SitemapStateStore {
       keyword: entry.keyword ?? null
     }))
 
+    const seenAtIso = seenAt.toISOString()
+
     if (payload.length > 0) {
       await this.db.query(
         `INSERT INTO sitemap_urls (
            source_target_id, url, keyword, first_seen_at, last_seen_at, signal_emitted_at, is_active
          )
-         SELECT $1, item.url, item.keyword, $3, $3, CASE WHEN $4 THEN $3 ELSE NULL END, TRUE
+         SELECT $1::text, item.url, item.keyword, $3::timestamptz, $3::timestamptz,
+                CASE WHEN $4::boolean THEN $3::timestamptz ELSE NULL END, TRUE
          FROM jsonb_to_recordset($2::jsonb) AS item(url TEXT, keyword TEXT)
          ON CONFLICT (source_target_id, url) DO UPDATE SET
            keyword = COALESCE(EXCLUDED.keyword, sitemap_urls.keyword),
            last_seen_at = EXCLUDED.last_seen_at,
            is_active = TRUE`,
-        [targetId, JSON.stringify(payload), seenAt, suppressNew]
+        [targetId, JSON.stringify(payload), seenAtIso, suppressNew]
       )
     }
 
     await this.db.query(
       `UPDATE sitemap_urls
        SET is_active = FALSE
-       WHERE source_target_id = $1 AND last_seen_at < $2`,
-      [targetId, seenAt]
+       WHERE source_target_id = $1 AND last_seen_at < $2::timestamptz`,
+      [targetId, seenAtIso]
     )
 
     const pendingCountResult = await this.db.query<{ count: number }>(
@@ -129,9 +132,9 @@ export class SitemapRepository implements SitemapStateStore {
     if (urls.length === 0) return
     await this.db.query(
       `UPDATE sitemap_urls
-       SET signal_emitted_at = COALESCE(signal_emitted_at, $3)
+       SET signal_emitted_at = COALESCE(signal_emitted_at, $3::timestamptz)
        WHERE source_target_id = $1 AND url = ANY($2::text[])`,
-      [targetId, urls, emittedAt]
+      [targetId, urls, emittedAt.toISOString()]
     )
   }
 
