@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { fileURLToPath } from "node:url"
-import { Database, SitemapRepository } from "@factory/database"
-import type { SourceTarget } from "@factory/shared"
+import { Database, DiscoveryRepository, SitemapRepository } from "@factory/database"
+import type { SignalSourceType, SourceTarget } from "@factory/shared"
 
 const port = Number(process.env.API_PORT ?? "8787")
 const dashboardToken = process.env.DASHBOARD_TOKEN?.trim() || ""
@@ -55,8 +55,19 @@ const server = createServer(async (request, response) => {
 
   const db = new Database()
   const sitemap = new SitemapRepository(db)
+  const discovery = new DiscoveryRepository(db)
 
   try {
+    if (request.method === "GET" && url.pathname === "/api/discovery/candidates") {
+      const range = url.searchParams.get("range")
+      const sourceType = (url.searchParams.get("sourceType") || undefined) as SignalSourceType | undefined
+      const [candidates, enabledTargetCount] = await Promise.all([
+        discovery.listCandidates(sinceForRange(range), { sourceType }),
+        discovery.countEnabledTargets()
+      ])
+      return sendJson(response, 200, { candidates, enabledTargetCount })
+    }
+
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {
       return sendJson(response, 200, { targets: await sitemap.listTargets() })
     }

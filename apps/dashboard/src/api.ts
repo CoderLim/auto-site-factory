@@ -10,16 +10,18 @@ export type SitemapTarget = {
   lastAttemptAt?: string
 }
 
-export type SitemapSignal = {
+export type DiscoveryCandidate = {
   id: string
-  targetId: string
-  targetName: string
-  url?: string
-  title?: string
-  keyword?: string
-  pageTitle?: string
-  h1?: string
-  discoveredAt: string
+  entityId: string
+  name: string
+  entityType: string
+  scope: string
+  status: string
+  mentionCount: number
+  sourceCount: number
+  sourceTypes: string[]
+  firstSeenAt: string
+  lastSeenAt: string
 }
 
 export type SitemapRun = {
@@ -40,6 +42,18 @@ export type SitemapAnomaly = {
   message: string
   recordedAt?: string
 }
+
+export const SOURCE_TYPE_OPTIONS = [
+  { value: "official_api", label: "Official API" },
+  { value: "igdb", label: "IGDB" },
+  { value: "steam_store", label: "Steam Store" },
+  { value: "wiki", label: "Wiki" },
+  { value: "reddit", label: "Reddit" },
+  { value: "youtube", label: "YouTube" },
+  { value: "discord", label: "Discord" },
+  { value: "x", label: "X" },
+  { value: "sitemap", label: "Sitemap" }
+] as const
 
 const TOKEN_KEY = "auto-site-factory-dashboard-token"
 
@@ -71,12 +85,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),
-  signals: (range: string, targetId?: string) => {
+  candidates: (range: string, sourceType?: string) => {
     const params = new URLSearchParams({ range })
-    if (targetId) params.set("targetId", targetId)
-    return request<{ signals: SitemapSignal[] }>(`/api/sitemap/signals?${params}`)
+    if (sourceType) params.set("sourceType", sourceType)
+    return request<{ candidates: DiscoveryCandidate[]; enabledTargetCount: number }>(
+      `/api/discovery/candidates?${params}`
+    )
   },
+  targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),
   runs: () => request<{ runs: SitemapRun[] }>("/api/sitemap/runs"),
   anomalies: () => request<{ anomalies: SitemapAnomaly[] }>("/api/sitemap/anomalies"),
   run: () => request<{ status: string; workflow_run_id?: number; html_url?: string }>("/api/sitemap/run", { method: "POST" }),

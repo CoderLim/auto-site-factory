@@ -1,5 +1,5 @@
 import { Client } from "pg"
-import { SitemapRepository } from "@factory/database"
+import { DiscoveryRepository, SitemapRepository } from "@factory/database"
 
 const DEFAULT_REPOSITORY = "CoderLim/auto-site-factory"
 const DEFAULT_WORKFLOW = "discovery-cron.yml"
@@ -20,7 +20,7 @@ function sinceForRange(range) {
   return new Date(Date.now() - hours * 60 * 60 * 1000)
 }
 
-async function withSitemapRepository(env, callback) {
+async function withRepos(env, callback) {
   if (!env.HYPERDRIVE?.connectionString) {
     throw new Error("Missing Cloudflare Hyperdrive binding: HYPERDRIVE")
   }
@@ -34,7 +34,10 @@ async function withSitemapRepository(env, callback) {
   }
 
   try {
-    return await callback(new SitemapRepository(database))
+    return await callback({
+      sitemap: new SitemapRepository(database),
+      discovery: new DiscoveryRepository(database)
+    })
   } finally {
     await client.end()
   }
@@ -81,8 +84,20 @@ export async function onRequest(context) {
   if (!authorized(request, env)) return json({ error: "unauthorized" }, 401)
 
   try {
+    if (request.method === "GET" && url.pathname === "/api/discovery/candidates") {
+      const range = url.searchParams.get("range")
+      const sourceType = url.searchParams.get("sourceType") || undefined
+      return await withRepos(env, async ({ discovery }) => {
+        const [candidates, enabledTargetCount] = await Promise.all([
+          discovery.listCandidates(sinceForRange(range), { sourceType }),
+          discovery.countEnabledTargets()
+        ])
+        return json({ candidates, enabledTargetCount })
+      })
+    }
+
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {
-      return await withSitemapRepository(env, async (sitemap) => json({ targets: await sitemap.listTargets() }))
+      return await withRepos(env, async ({ sitemap }) => json({ targets: await sitemap.listTargets() }))
     }
 
     if (request.method === "POST" && url.pathname === "/api/sitemap/targets") {
@@ -96,7 +111,7 @@ export async function onRequest(context) {
         enabled: body.enabled !== false,
         config: body.config ?? {}
       }
-      return await withSitemapRepository(env, async (sitemap) => {
+      return await withRepos(env, async ({ sitemap }) => {
         await sitemap.saveTarget(target)
         return json({ target }, 201)
       })
@@ -106,7 +121,7 @@ export async function onRequest(context) {
     if (request.method === "PUT" && targetMatch) {
       const targetId = decodeURIComponent(targetMatch[1] ?? "")
       const body = await request.json()
-      return await withSitemapRepository(env, async (sitemap) => {
+      return await withRepos(env, async ({ sitemap }) => {
         const existing = await sitemap.getTarget(targetId)
         if (!existing) return json({ error: "target not found" }, 404)
         const target = {
@@ -124,17 +139,17 @@ export async function onRequest(context) {
     if (request.method === "GET" && url.pathname === "/api/sitemap/signals") {
       const range = url.searchParams.get("range")
       const targetId = url.searchParams.get("targetId") || undefined
-      return await withSitemapRepository(env, async (sitemap) =>
+      return await withRepos(env, async ({ sitemap }) =>
         json({ signals: await sitemap.listSignals(sinceForRange(range), targetId) })
       )
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/runs") {
-      return await withSitemapRepository(env, async (sitemap) => json({ runs: await sitemap.listRuns(100) }))
+      return await withRepos(env, async ({ sitemap }) => json({ runs: await sitemap.listRuns(100) }))
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/anomalies") {
-      return await withSitemapRepository(env, async (sitemap) => json({ anomalies: await sitemap.listAnomalies() }))
+      return await withRepos(env, async ({ sitemap }) => json({ anomalies: await sitemap.listAnomalies() }))
     }
 
     if (request.method === "POST" && url.pathname === "/api/sitemap/run") {

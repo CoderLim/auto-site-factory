@@ -1,8 +1,21 @@
 import { FormEvent, useEffect, useMemo, useState } from "react"
-import { api, getDashboardToken, setDashboardToken, type SitemapAnomaly, type SitemapRun, type SitemapSignal, type SitemapTarget } from "./api"
+import {
+  SOURCE_TYPE_OPTIONS,
+  api,
+  getDashboardToken,
+  setDashboardToken,
+  type DiscoveryCandidate,
+  type SitemapAnomaly,
+  type SitemapRun,
+  type SitemapTarget
+} from "./api"
 
 type Tab = "keywords" | "sites" | "runs" | "anomalies"
-const ranges = [{ value: "1d", label: "最近 1 天" }, { value: "7d", label: "最近 7 天" }, { value: "30d", label: "最近 30 天" }]
+const ranges = [
+  { value: "1d", label: "最近 1 天" },
+  { value: "7d", label: "最近 7 天" },
+  { value: "30d", label: "最近 30 天" }
+]
 
 function formatTime(value?: string) {
   if (!value) return "—"
@@ -20,9 +33,10 @@ function targetRoots(target: SitemapTarget): string {
 export default function App() {
   const [tab, setTab] = useState<Tab>("keywords")
   const [range, setRange] = useState("1d")
-  const [targetId, setTargetId] = useState("")
+  const [sourceType, setSourceType] = useState("")
   const [targets, setTargets] = useState<SitemapTarget[]>([])
-  const [signals, setSignals] = useState<SitemapSignal[]>([])
+  const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([])
+  const [enabledTargetCount, setEnabledTargetCount] = useState(0)
   const [runs, setRuns] = useState<SitemapRun[]>([])
   const [anomalies, setAnomalies] = useState<SitemapAnomaly[]>([])
   const [loading, setLoading] = useState(true)
@@ -38,16 +52,17 @@ export default function App() {
     setAnomalies(anomalyResult.anomalies)
   }
 
-  const refreshSignals = async () => {
-    const result = await api.signals(range, targetId || undefined)
-    setSignals(result.signals)
+  const refreshCandidates = async () => {
+    const result = await api.candidates(range, sourceType || undefined)
+    setCandidates(result.candidates)
+    setEnabledTargetCount(result.enabledTargetCount)
   }
 
   const refreshAll = async () => {
     setError("")
     setLoading(true)
     try {
-      await Promise.all([refreshCore(), refreshSignals()])
+      await Promise.all([refreshCore(), refreshCandidates()])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -61,17 +76,16 @@ export default function App() {
 
   useEffect(() => {
     if (loading) return
-    void refreshSignals().catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [range, targetId])
+    void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [range, sourceType])
 
-  const uniqueKeywords = useMemo(() => {
+  const sourceTypeCount = useMemo(() => {
     const seen = new Set<string>()
-    return signals.filter((signal) => {
-      if (!signal.keyword || seen.has(signal.keyword)) return false
-      seen.add(signal.keyword)
-      return true
-    })
-  }, [signals])
+    for (const candidate of candidates) {
+      for (const item of candidate.sourceTypes) seen.add(item)
+    }
+    return seen.size
+  }, [candidates])
 
   const connect = async () => {
     setDashboardToken(token)
@@ -134,7 +148,7 @@ export default function App() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">ASF</span><div><strong>Auto Site Factory</strong><small>Sitemap Monitor</small></div></div>
+        <div className="brand"><span className="brand-mark">ASF</span><div><strong>Auto Site Factory</strong><small>Discovery</small></div></div>
         <nav>
           <button className={tab === "keywords" ? "active" : ""} onClick={() => setTab("keywords")}>新增关键词</button>
           <button className={tab === "sites" ? "active" : ""} onClick={() => setTab("sites")}>Sitemap 管理</button>
@@ -145,7 +159,7 @@ export default function App() {
 
       <main>
         <header>
-          <div><p className="eyebrow">DISCOVERY / SITEMAP</p><h1>{tab === "keywords" ? "新增关键词" : tab === "sites" ? "Sitemap 管理" : tab === "runs" ? "运行记录" : "异常中心"}</h1></div>
+          <div><p className="eyebrow">{tab === "keywords" ? "DISCOVERY" : "DISCOVERY / SITEMAP"}</p><h1>{tab === "keywords" ? "新增关键词" : tab === "sites" ? "Sitemap 管理" : tab === "runs" ? "运行记录" : "异常中心"}</h1></div>
           <div className="header-actions">
             <div className="token-control">
               <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Dashboard token（如已配置）" />
@@ -162,18 +176,53 @@ export default function App() {
           <section>
             <div className="toolbar">
               <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
-              <select value={targetId} onChange={(event) => setTargetId(event.target.value)}><option value="">全部站点</option>{targets.map((target) => <option value={target.id} key={target.id}>{target.name}</option>)}</select>
+              <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                <option value="">全部来源</option>
+                {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+              </select>
             </div>
             <div className="stats">
-              <article><strong>{uniqueKeywords.length}</strong><span>新增关键词</span></article>
-              <article><strong>{signals.length}</strong><span>新增 URL</span></article>
-              <article><strong>{targets.filter((target) => target.enabled).length}</strong><span>启用站点</span></article>
+              <article><strong>{candidates.length}</strong><span>新增候选</span></article>
+              <article><strong>{sourceTypeCount}</strong><span>来源类型</span></article>
+              <article><strong>{enabledTargetCount}</strong><span>启用源</span></article>
             </div>
             <div className="card table-card">
-              <table><thead><tr><th>关键词</th><th>站点</th><th>发现时间</th><th>页面</th><th></th></tr></thead>
-                <tbody>{uniqueKeywords.map((signal) => <tr key={signal.id}><td><strong>{signal.keyword}</strong></td><td>{signal.targetName}</td><td>{formatTime(signal.discoveredAt)}</td><td><a href={signal.url} target="_blank" rel="noreferrer">{signal.title ?? signal.url}</a></td><td><a className="trend" href={`https://trends.google.com/trends/explore?date=today%205-y&q=${encodeURIComponent(signal.keyword ?? "")}`} target="_blank" rel="noreferrer">Trends ↗</a></td></tr>)}</tbody>
+              <table>
+                <thead>
+                  <tr>
+                    <th>候选词</th>
+                    <th>类型</th>
+                    <th>Scope</th>
+                    <th>来源</th>
+                    <th>提及</th>
+                    <th>首次发现</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidates.map((candidate) => (
+                    <tr key={candidate.id}>
+                      <td><strong>{candidate.name}</strong></td>
+                      <td>{candidate.entityType}</td>
+                      <td>{candidate.scope}</td>
+                      <td>{candidate.sourceTypes.join(", ")}</td>
+                      <td>{candidate.mentionCount}</td>
+                      <td>{formatTime(candidate.firstSeenAt)}</td>
+                      <td>
+                        <a
+                          className="trend"
+                          href={`https://trends.google.com/trends/explore?date=today%205-y&q=${encodeURIComponent(candidate.name)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Trends ↗
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
-              {uniqueKeywords.length === 0 && <div className="empty">这个时间范围还没有新的 Sitemap 关键词</div>}
+              {candidates.length === 0 && <div className="empty">这个时间范围还没有新的 Discovery 候选</div>}
             </div>
           </section>
         ) : tab === "sites" ? (

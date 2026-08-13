@@ -7,7 +7,7 @@ The repository currently implements **Layer 1: Signal Discovery** only.
 ## Implemented in Layer 1
 
 - Monorepo: `apps/worker`, `apps/discord-gateway`, `apps/api`, `apps/dashboard`, `packages/discovery`, `packages/database`, `packages/shared`
-- Seven source types: Official API, Wiki/Fandom, Reddit, YouTube, Discord, X, Sitemap
+- Nine source types: Official API, IGDB, Steam Store, Wiki/Fandom, Reddit, YouTube, Discord, X, Sitemap
 - Concrete starter source registry covering AI, tools, Roblox/game ecosystems, and directory sitemap discovery
 - Five-hour polling worker for polling sources
 - Discord Gateway process for real-time `MESSAGE_CREATE` signals
@@ -18,7 +18,7 @@ The repository currently implements **Layer 1: Signal Discovery** only.
 - Entity mentions and candidate aggregation
 - Per-target/run status so one failing collector does not fail the entire batch
 - Production-oriented Sitemap subsystem migrated from `CoderLim/sitemap-monitor`
-- Sitemap Dashboard for new keywords, source management, manual runs and anomalies
+- Discovery Dashboard for cross-source candidates, Sitemap management, manual runs and anomalies
 
 Layer 1 intentionally does **not** decide whether a keyword has search volume, low competition, or should become a website. Those belong to Layer 2.
 
@@ -46,6 +46,12 @@ Run Sitemap only:
 
 ```bash
 npm run sitemap:once
+```
+
+Run the public Steam upcoming/new-release sources only:
+
+```bash
+npm run steam-store:once
 ```
 
 For Discord realtime collection, complete the relay configuration described in [`docs/SOURCES.md`](docs/SOURCES.md), enable the Discord target, then run:
@@ -91,7 +97,7 @@ npm run dashboard:dev
 
 Open `http://127.0.0.1:5173`.
 
-The current Sitemap dashboard includes new keywords, 1/7/30 day ranges, site management, manual Sitemap-only collection, run history, anomalies, and Google Trends shortcuts.
+The current Discovery dashboard includes cross-source candidates (filterable by source type), 1/7/30 day ranges, Sitemap site management, manual collection, run history, anomalies, and Google Trends shortcuts.
 
 ## Source target configuration
 

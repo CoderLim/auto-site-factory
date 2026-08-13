@@ -76,6 +76,7 @@ It serves:
 
 ```text
 GET  /api/health
+GET  /api/discovery/candidates
 GET  /api/sitemap/targets
 POST /api/sitemap/targets
 PUT  /api/sitemap/targets/:id
@@ -84,6 +85,8 @@ GET  /api/sitemap/runs
 GET  /api/sitemap/anomalies
 POST /api/sitemap/run
 ```
+
+`GET /api/discovery/candidates` accepts `range` (`1d` / `7d` / `30d`) and optional `sourceType`. When `sourceType` is omitted, all sources are returned.
 
 ## 4. Dashboard authentication
 

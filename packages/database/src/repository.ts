@@ -20,8 +20,75 @@ function parseTarget(row: Record<string, unknown>): SourceTarget {
   }
 }
 
+export type DiscoveryCandidateRow = {
+  id: string
+  entityId: string
+  name: string
+  entityType: string
+  scope: string
+  status: string
+  mentionCount: number
+  sourceCount: number
+  sourceTypes: string[]
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
 export class DiscoveryRepository {
   constructor(private readonly db: Database) {}
+
+  async countEnabledTargets(): Promise<number> {
+    const result = await this.db.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM source_targets WHERE enabled = TRUE`
+    )
+    return result.rows[0]?.count ?? 0
+  }
+
+  async listCandidates(
+    since: Date,
+    options: { sourceType?: SignalSourceType; limit?: number } = {}
+  ): Promise<DiscoveryCandidateRow[]> {
+    const limit = options.limit ?? 500
+    const result = options.sourceType
+      ? await this.db.query(
+          `SELECT c.id, c.entity_id, e.canonical_name, e.entity_type, e.scope,
+                  c.status, c.mention_count, c.source_count, c.source_types,
+                  c.first_seen_at, c.last_seen_at
+           FROM candidates c
+           JOIN entities e ON e.id = c.entity_id
+           WHERE c.first_seen_at >= $1 AND $2 = ANY(c.source_types)
+           ORDER BY c.first_seen_at DESC, c.id DESC
+           LIMIT $3`,
+          [since.toISOString(), options.sourceType, limit]
+        )
+      : await this.db.query(
+          `SELECT c.id, c.entity_id, e.canonical_name, e.entity_type, e.scope,
+                  c.status, c.mention_count, c.source_count, c.source_types,
+                  c.first_seen_at, c.last_seen_at
+           FROM candidates c
+           JOIN entities e ON e.id = c.entity_id
+           WHERE c.first_seen_at >= $1
+           ORDER BY c.first_seen_at DESC, c.id DESC
+           LIMIT $2`,
+          [since.toISOString(), limit]
+        )
+
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      entityId: String(row.entity_id),
+      name: String(row.canonical_name),
+      entityType: String(row.entity_type),
+      scope: String(row.scope),
+      status: String(row.status),
+      mentionCount: Number(row.mention_count ?? 0),
+      sourceCount: Number(row.source_count ?? 0),
+      sourceTypes: Array.isArray(row.source_types)
+        ? row.source_types.map((item) => String(item))
+        : [],
+      firstSeenAt: new Date(String(row.first_seen_at)).toISOString(),
+      lastSeenAt: new Date(String(row.last_seen_at)).toISOString()
+    }))
+  }
 
   async listEnabledTargets(sourceType?: SignalSourceType): Promise<SourceTarget[]> {
     const result = sourceType
