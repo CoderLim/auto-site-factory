@@ -16,7 +16,6 @@ jobs:
     timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
       STEAM_STORE_CHECK_LIMIT: "200"
       STEAM_CCU_CHECK_LIMIT: "300"
 
@@ -27,14 +26,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Require credentials
+      - name: Require database
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "Missing required GitHub Actions secret: DATABASE_URL"
-            exit 1
-          fi
-          if [ -z "$STEAM_WEB_API_KEY" ]; then
-            echo "Missing required GitHub Actions secret: STEAM_WEB_API_KEY"
             exit 1
           fi
 
