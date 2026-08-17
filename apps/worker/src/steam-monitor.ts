@@ -84,7 +84,9 @@ async function fetchAppListPage(
   if (options.ifModifiedSince) input.if_modified_since = options.ifModifiedSince
   if (options.lastAppid) input.last_appid = options.lastAppid
 
-  const url = new URL("https://partner.steam-api.com/IStoreService/GetAppList/v1/")
+  // Use the public Web API host here. A normal user Web API key works with
+  // IStoreService/GetAppList; partner.steam-api.com is for publisher keys.
+  const url = new URL("https://api.steampowered.com/IStoreService/GetAppList/v1/")
   url.searchParams.set("key", apiKey)
   url.searchParams.set("input_json", JSON.stringify(input))
 
