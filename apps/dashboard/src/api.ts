@@ -24,6 +24,33 @@ export type DiscoveryCandidate = {
   lastSeenAt: string
 }
 
+export type SteamGame = {
+  appid: number
+  name: string
+  firstObservedAt: string
+  isBaseline: boolean
+  steamLastModifiedAt?: string
+  storeStatus: "unknown" | "coming_soon" | "released" | "unavailable"
+  storeUrl?: string
+  releaseDateText?: string
+  releaseDate?: string
+  releasedAt?: string
+  hasDemo: boolean
+  demoAppid?: number
+  demoSeenAt?: string
+  hasPlaytest: boolean
+  playtestAppid?: number
+  playtestSeenAt?: string
+  ccuSource?: "game" | "demo" | "playtest"
+  ccuAppid?: number
+  ccuCurrent?: number
+  ccu24hPeak?: number
+  ccu7dPeak?: number
+  ccu24hGrowthPct?: number
+  lastStoreCheckedAt?: string
+  lastCcuCheckedAt?: string
+}
+
 export type SitemapRun = {
   runId: string
   targetId: string
@@ -91,6 +118,14 @@ export const api = {
     return request<{ candidates: DiscoveryCandidate[]; enabledTargetCount: number }>(
       `/api/discovery/candidates?${params}`
     )
+  },
+  steamGames: (options: { range: string; status?: string; minCcu?: string; sort?: string; includeBaseline?: boolean }) => {
+    const params = new URLSearchParams({ range: options.range })
+    if (options.status) params.set("status", options.status)
+    if (options.minCcu) params.set("minCcu", options.minCcu)
+    if (options.sort) params.set("sort", options.sort)
+    if (options.includeBaseline) params.set("includeBaseline", "true")
+    return request<{ games: SteamGame[] }>(`/api/steam/games?${params}`)
   },
   targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),
   runs: () => request<{ runs: SitemapRun[] }>("/api/sitemap/runs"),
