@@ -1,0 +1,48 @@
+name: Steam Lifecycle Monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    # GitHub cron is UTC. Offset from the top of the hour to reduce scheduler contention.
+    - cron: "37 */3 * * *"
+
+concurrency:
+  group: steam-lifecycle-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
+      STEAM_STORE_CHECK_LIMIT: "200"
+      STEAM_CCU_CHECK_LIMIT: "300"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require credentials
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+          if [ -z "$STEAM_WEB_API_KEY" ]; then
+            echo "Missing required GitHub Actions secret: STEAM_WEB_API_KEY"
+            exit 1
+          fi
+
+      - run: npm install
+      - run: npm run build
+
+      - name: Migrate database
+        run: node packages/database/dist/migrate.js
+
+      - name: Run Steam lifecycle monitor
+        run: node apps/worker/dist/steam-monitor.js
