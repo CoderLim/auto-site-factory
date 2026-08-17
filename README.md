@@ -18,7 +18,8 @@ The repository currently implements **Layer 1: Signal Discovery** only.
 - Entity mentions and candidate aggregation
 - Per-target/run status so one failing collector does not fail the entire batch
 - Production-oriented Sitemap subsystem migrated from `CoderLim/sitemap-monitor`
-- Discovery Dashboard for cross-source candidates, Sitemap management, manual runs and anomalies
+- Steam lifecycle monitor for newly observed apps: game classification, Store status, release date, Demo/Playtest and CCU history
+- Discovery Dashboard for cross-source candidates, Steam games, Sitemap management, manual runs and anomalies
 
 Layer 1 intentionally does **not** decide whether a keyword has search volume, low competition, or should become a website. Those belong to Layer 2.
 
@@ -53,6 +54,14 @@ Run the public Steam upcoming/new-release sources only:
 ```bash
 npm run steam-store:once
 ```
+
+Run Steam lifecycle discovery/monitoring once:
+
+```bash
+npm run steam:once
+```
+
+The lifecycle monitor currently uses the keyless, deprecated `ISteamApps/GetAppList/v2` endpoint to establish a baseline and find newly observed AppIDs. New AppIDs are then classified with Steam Store metadata so only real games appear in the Steam Dashboard. The first run is baseline-only; later runs treat previously unseen AppIDs as discoveries.
 
 For Discord realtime collection, complete the relay configuration described in [`docs/SOURCES.md`](docs/SOURCES.md), enable the Discord target, then run:
 
@@ -97,7 +106,7 @@ npm run dashboard:dev
 
 Open `http://127.0.0.1:5173`.
 
-The current Discovery dashboard includes cross-source candidates (filterable by source type), 1/7/30 day ranges, Sitemap site management, manual collection, run history, anomalies, and Google Trends shortcuts.
+The current Discovery dashboard includes cross-source candidates (filterable by source type), Steam game lifecycle/CCU monitoring, 1/7/30 day ranges, Sitemap site management, manual collection, run history, anomalies, and Google Trends shortcuts.
 
 ## Source target configuration
 
