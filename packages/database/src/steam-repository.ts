@@ -193,14 +193,14 @@ export class SteamRepository {
              WHEN $3 = 'released' AND released_at IS NULL THEN NOW()
              ELSE released_at
            END,
-           has_demo = $7,
-           demo_appid = $8,
+           has_demo = has_demo OR $7,
+           demo_appid = COALESCE($8, demo_appid),
            demo_seen_at = CASE
              WHEN $7 = TRUE AND demo_seen_at IS NULL THEN NOW()
              ELSE demo_seen_at
            END,
-           has_playtest = $9,
-           playtest_appid = $10,
+           has_playtest = has_playtest OR $9,
+           playtest_appid = COALESCE($10, playtest_appid),
            playtest_seen_at = CASE
              WHEN $9 = TRUE AND playtest_seen_at IS NULL THEN NOW()
              ELSE playtest_seen_at
