@@ -7,22 +7,28 @@ import {
   type SteamStoreDetails
 } from "@factory/database"
 
-const APP_LIST_STATE_KEY = "steam_app_list_v2_keyless"
+const APP_LIST_STATE_KEY = "steam_games_mirror_v1"
+const DEFAULT_GAME_LIST_METADATA_URL = "https://api.github.com/repos/jsnli/steamappidlist/contents/data/games_appid.json?ref=master"
+const DEFAULT_GAME_LIST_RAW_URL = "https://raw.githubusercontent.com/jsnli/steamappidlist/master/data/games_appid.json"
 const STORE_CHECK_LIMIT = Number(process.env.STEAM_STORE_CHECK_LIMIT ?? "200")
 const CCU_CHECK_LIMIT = Number(process.env.STEAM_CCU_CHECK_LIMIT ?? "300")
 
 interface AppListState {
   initializedAt?: string
   lastSyncAt?: string
+  sourceSha?: string
 }
 
-interface SteamLegacyAppListResponse {
-  applist?: {
-    apps?: Array<{
-      appid: number
-      name: string
-    }>
-  }
+interface GameListMetadata {
+  sha?: string
+  download_url?: string
+}
+
+interface SteamMirrorApp {
+  appid?: number
+  name?: string
+  last_modified?: number
+  price_change_number?: number
 }
 
 interface SteamAppDetailsResponse {
@@ -66,21 +72,57 @@ function parseReleaseDate(value?: string): string | undefined {
   return new Date(time).toISOString().slice(0, 10)
 }
 
-async function fetchLegacyAppList(): Promise<SteamAppListItem[]> {
-  const url = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
-  const response = await fetch(url, { headers: { "user-agent": "auto-site-factory/0.1" } })
-  if (!response.ok) throw new Error(`Steam legacy GetAppList failed (${response.status}): ${await response.text()}`)
+async function fetchGameListMetadata(): Promise<GameListMetadata | undefined> {
+  const metadataUrl = process.env.STEAM_GAME_LIST_METADATA_URL?.trim() || DEFAULT_GAME_LIST_METADATA_URL
+  try {
+    const response = await fetch(metadataUrl, {
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": "auto-site-factory/0.1"
+      }
+    })
+    if (!response.ok) {
+      console.warn(`[steam] game list metadata unavailable (${response.status}); falling back to raw download`)
+      return undefined
+    }
+    return await response.json() as GameListMetadata
+  } catch (error) {
+    console.warn("[steam] game list metadata request failed; falling back to raw download", error)
+    return undefined
+  }
+}
 
-  const payload = await response.json() as SteamLegacyAppListResponse
-  return (payload.applist?.apps ?? [])
-    .filter((item) => item.appid > 0 && item.name?.trim())
-    .map((item) => ({ appid: item.appid, name: item.name.trim() }))
+async function fetchGameMirror(url: string): Promise<SteamAppListItem[]> {
+  const response = await fetch(url, { headers: { "user-agent": "auto-site-factory/0.1" } })
+  if (!response.ok) throw new Error(`Steam game mirror failed (${response.status}): ${await response.text()}`)
+
+  const payload = await response.json() as SteamMirrorApp[]
+  if (!Array.isArray(payload)) throw new Error("Steam game mirror returned a non-array payload")
+
+  return payload
+    .filter((item): item is SteamMirrorApp & { appid: number; name: string } =>
+      typeof item.appid === "number" && item.appid > 0 && typeof item.name === "string" && Boolean(item.name.trim())
+    )
+    .map((item) => ({
+      appid: item.appid,
+      name: item.name.trim(),
+      lastModified: item.last_modified,
+      priceChangeNumber: item.price_change_number
+    }))
 }
 
 async function syncAppList(repository: SteamRepository): Promise<void> {
   const state = await repository.getState<AppListState>(APP_LIST_STATE_KEY)
+  const metadata = await fetchGameListMetadata()
+
+  if (state?.initializedAt && metadata?.sha && metadata.sha === state.sourceSha) {
+    console.log(`[steam] game mirror unchanged sha=${metadata.sha}; skipping app-list diff`)
+    return
+  }
+
+  const rawUrl = process.env.STEAM_GAME_LIST_URL?.trim() || metadata?.download_url || DEFAULT_GAME_LIST_RAW_URL
+  const items = await fetchGameMirror(rawUrl)
   const baseline = !state?.initializedAt
-  const items = await fetchLegacyAppList()
   let inserted = 0
 
   for (const batch of chunks(items, 2000)) {
@@ -90,10 +132,11 @@ async function syncAppList(repository: SteamRepository): Promise<void> {
 
   await repository.setState(APP_LIST_STATE_KEY, {
     initializedAt: state?.initializedAt ?? new Date().toISOString(),
-    lastSyncAt: new Date().toISOString()
+    lastSyncAt: new Date().toISOString(),
+    sourceSha: metadata?.sha ?? state?.sourceSha
   } satisfies AppListState)
 
-  console.log(`[steam] legacy app list baseline=${baseline} fetched=${items.length} new=${inserted}`)
+  console.log(`[steam] game mirror baseline=${baseline} fetched=${items.length} new=${inserted} sha=${metadata?.sha ?? "unknown"}`)
 }
 
 function detectPlaytest(html: string, mainAppid: number): { hasPlaytest: boolean; playtestAppid?: number } {
