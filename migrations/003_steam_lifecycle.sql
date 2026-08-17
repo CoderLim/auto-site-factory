@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS steam_games (
 
 ALTER TABLE steam_games ADD COLUMN IF NOT EXISTS app_type TEXT;
 
+-- The current keyless discovery source is a games-only mirror. Older rows created
+-- before app_type was assigned are therefore safe to backfill as games.
+UPDATE steam_games
+SET app_type = 'game', updated_at = NOW()
+WHERE app_type IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_steam_games_first_observed
   ON steam_games(first_observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_steam_games_status
