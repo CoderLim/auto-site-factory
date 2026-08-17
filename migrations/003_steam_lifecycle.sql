@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS steam_monitor_state (
 CREATE TABLE IF NOT EXISTS steam_games (
   appid BIGINT PRIMARY KEY,
   name TEXT NOT NULL,
+  app_type TEXT,
   first_observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   is_baseline BOOLEAN NOT NULL DEFAULT FALSE,
   steam_last_modified_at TIMESTAMPTZ,
@@ -33,10 +34,14 @@ CREATE TABLE IF NOT EXISTS steam_games (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE steam_games ADD COLUMN IF NOT EXISTS app_type TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_steam_games_first_observed
   ON steam_games(first_observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_steam_games_status
   ON steam_games(store_status, first_observed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_steam_games_type
+  ON steam_games(app_type, first_observed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_steam_games_ccu
   ON steam_games(ccu_current DESC NULLS LAST);
 
