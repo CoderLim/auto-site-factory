@@ -12,6 +12,7 @@ export interface SteamAppListItem {
 
 export interface SteamStoreDetails {
   name?: string
+  appType?: string
   status: SteamStoreStatus
   storeUrl: string
   releaseDateText?: string
@@ -31,6 +32,7 @@ export interface SteamCcuSample {
 export interface SteamGameSummary {
   appid: number
   name: string
+  appType?: string
   firstObservedAt: string
   isBaseline: boolean
   steamLastModifiedAt?: string
@@ -69,6 +71,7 @@ function toGame(row: Record<string, unknown>): SteamGameSummary {
   return {
     appid: Number(row.appid),
     name: String(row.name),
+    appType: optionalString(row.app_type),
     firstObservedAt: String(row.first_observed_at),
     isBaseline: Boolean(row.is_baseline),
     steamLastModifiedAt: optionalString(row.steam_last_modified_at),
@@ -123,6 +126,8 @@ export class SteamRepository {
       [appids]
     )
     const existingIds = new Set(existing.rows.map((row) => Number(row.appid)))
+    const missing = items.filter((item) => !existingIds.has(item.appid))
+    if (missing.length === 0) return { inserted: 0, updated: 0 }
 
     await this.db.query(
       `INSERT INTO steam_games(
@@ -145,13 +150,8 @@ export class SteamRepository {
          last_modified bigint,
          price_change_number bigint
        )
-       ON CONFLICT (appid) DO UPDATE SET
-         name = EXCLUDED.name,
-         steam_last_modified_at = EXCLUDED.steam_last_modified_at,
-         price_change_number = EXCLUDED.price_change_number,
-         store_url = EXCLUDED.store_url,
-         updated_at = NOW()`,
-      [JSON.stringify(items.map((item) => ({
+       ON CONFLICT (appid) DO NOTHING`,
+      [JSON.stringify(missing.map((item) => ({
         appid: item.appid,
         name: item.name,
         last_modified: item.lastModified ?? null,
@@ -159,8 +159,7 @@ export class SteamRepository {
       }))), isBaseline]
     )
 
-    const inserted = items.reduce((sum, item) => sum + (existingIds.has(item.appid) ? 0 : 1), 0)
-    return { inserted, updated: items.length - inserted }
+    return { inserted: missing.length, updated: 0 }
   }
 
   async listForStoreCheck(limit = 200): Promise<SteamGameSummary[]> {
@@ -168,11 +167,11 @@ export class SteamRepository {
       `SELECT *
        FROM steam_games
        WHERE is_baseline = FALSE
+         AND (app_type IS NULL OR app_type = 'game')
          AND (
            last_store_checked_at IS NULL
-           OR (store_status IN ('unknown', 'coming_soon') AND last_store_checked_at < NOW() - INTERVAL '12 hours')
+           OR (store_status IN ('unknown', 'coming_soon', 'unavailable') AND last_store_checked_at < NOW() - INTERVAL '12 hours')
            OR (store_status = 'released' AND last_store_checked_at < NOW() - INTERVAL '7 days')
-           OR (store_status = 'unavailable' AND last_store_checked_at < NOW() - INTERVAL '3 days')
          )
        ORDER BY last_store_checked_at ASC NULLS FIRST, first_observed_at DESC
        LIMIT $1`,
@@ -185,24 +184,25 @@ export class SteamRepository {
     await this.db.query(
       `UPDATE steam_games
        SET name = COALESCE($2, name),
-           store_status = $3,
-           store_url = $4,
-           release_date_text = $5,
-           release_date = $6::date,
+           app_type = COALESCE($3, app_type),
+           store_status = $4,
+           store_url = $5,
+           release_date_text = $6,
+           release_date = $7::date,
            released_at = CASE
-             WHEN $3 = 'released' AND released_at IS NULL THEN NOW()
+             WHEN $4 = 'released' AND released_at IS NULL THEN NOW()
              ELSE released_at
            END,
-           has_demo = has_demo OR $7,
-           demo_appid = COALESCE($8, demo_appid),
+           has_demo = has_demo OR $8,
+           demo_appid = COALESCE($9, demo_appid),
            demo_seen_at = CASE
-             WHEN $7 = TRUE AND demo_seen_at IS NULL THEN NOW()
+             WHEN $8 = TRUE AND demo_seen_at IS NULL THEN NOW()
              ELSE demo_seen_at
            END,
-           has_playtest = has_playtest OR $9,
-           playtest_appid = COALESCE($10, playtest_appid),
+           has_playtest = has_playtest OR $10,
+           playtest_appid = COALESCE($11, playtest_appid),
            playtest_seen_at = CASE
-             WHEN $9 = TRUE AND playtest_seen_at IS NULL THEN NOW()
+             WHEN $10 = TRUE AND playtest_seen_at IS NULL THEN NOW()
              ELSE playtest_seen_at
            END,
            last_store_checked_at = NOW(),
@@ -211,6 +211,7 @@ export class SteamRepository {
       [
         appid,
         details.name ?? null,
+        details.appType ?? null,
         details.status,
         details.storeUrl,
         details.releaseDateText ?? null,
@@ -235,6 +236,7 @@ export class SteamRepository {
       `SELECT *
        FROM steam_games
        WHERE is_baseline = FALSE
+         AND app_type = 'game'
          AND (store_status = 'released' OR has_demo = TRUE OR has_playtest = TRUE)
          AND (last_ccu_checked_at IS NULL OR last_ccu_checked_at < NOW() - INTERVAL '2 hours')
        ORDER BY last_ccu_checked_at ASC NULLS FIRST, first_observed_at DESC
@@ -293,7 +295,7 @@ export class SteamRepository {
     sort?: "recent" | "ccu" | "growth"
     limit?: number
   } = {}): Promise<SteamGameSummary[]> {
-    const conditions: string[] = []
+    const conditions: string[] = ["g.app_type = 'game'"]
     const params: unknown[] = []
     const add = (condition: string, value: unknown): void => {
       params.push(value)
@@ -310,7 +312,7 @@ export class SteamRepository {
     const limit = Math.min(Math.max(options.limit ?? 250, 1), 500)
     params.push(limit)
     const limitParam = `$${params.length}`
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""
+    const where = `WHERE ${conditions.join(" AND ")}`
     const orderBy = options.sort === "ccu"
       ? "g.ccu_current DESC NULLS LAST, g.first_observed_at DESC"
       : options.sort === "growth"
