@@ -2,6 +2,13 @@ name: Steam Lifecycle Monitor
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/steam-monitor.yml"
+      - "apps/worker/src/steam-monitor.ts"
+      - "packages/database/src/steam-repository.ts"
+      - "migrations/003_steam_lifecycle.sql"
   schedule:
     # GitHub cron is UTC. Offset from the top of the hour to reduce scheduler contention.
     - cron: "37 */3 * * *"
