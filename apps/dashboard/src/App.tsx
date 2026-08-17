@@ -7,19 +7,32 @@ import {
   type DiscoveryCandidate,
   type SitemapAnomaly,
   type SitemapRun,
-  type SitemapTarget
+  type SitemapTarget,
+  type SteamGame
 } from "./api"
 
-type Tab = "keywords" | "sites" | "runs" | "anomalies"
+type Tab = "keywords" | "steam" | "sites" | "runs" | "anomalies"
 const ranges = [
   { value: "1d", label: "最近 1 天" },
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" }
 ]
+const steamRanges = [...ranges, { value: "90d", label: "最近 90 天" }]
 
 function formatTime(value?: string) {
   if (!value) return "—"
   return new Date(value).toLocaleString()
+}
+
+function formatNumber(value?: number) {
+  return value == null ? "—" : value.toLocaleString()
+}
+
+function statusLabel(status: SteamGame["storeStatus"]) {
+  if (status === "coming_soon") return "Coming Soon"
+  if (status === "released") return "Released"
+  if (status === "unavailable") return "Unavailable"
+  return "Unknown"
 }
 
 function targetRoots(target: SitemapTarget): string {
@@ -39,6 +52,13 @@ export default function App() {
   const [enabledTargetCount, setEnabledTargetCount] = useState(0)
   const [runs, setRuns] = useState<SitemapRun[]>([])
   const [anomalies, setAnomalies] = useState<SitemapAnomaly[]>([])
+  const [steamGames, setSteamGames] = useState<SteamGame[]>([])
+  const [steamRange, setSteamRange] = useState("30d")
+  const [steamStatus, setSteamStatus] = useState("")
+  const [steamMinCcu, setSteamMinCcu] = useState("")
+  const [steamSort, setSteamSort] = useState("recent")
+  const [includeBaseline, setIncludeBaseline] = useState(false)
+  const [steamLoading, setSteamLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -56,6 +76,22 @@ export default function App() {
     const result = await api.candidates(range, sourceType || undefined)
     setCandidates(result.candidates)
     setEnabledTargetCount(result.enabledTargetCount)
+  }
+
+  const refreshSteam = async () => {
+    setSteamLoading(true)
+    try {
+      const result = await api.steamGames({
+        range: steamRange,
+        status: steamStatus || undefined,
+        minCcu: steamMinCcu || undefined,
+        sort: steamSort,
+        includeBaseline
+      })
+      setSteamGames(result.games)
+    } finally {
+      setSteamLoading(false)
+    }
   }
 
   const refreshAll = async () => {
@@ -79,6 +115,12 @@ export default function App() {
     void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [range, sourceType])
 
+  useEffect(() => {
+    if (tab !== "steam") return
+    setError("")
+    void refreshSteam().catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [tab, steamRange, steamStatus, steamMinCcu, steamSort, includeBaseline])
+
   const sourceTypeCount = useMemo(() => {
     const seen = new Set<string>()
     for (const candidate of candidates) {
@@ -87,9 +129,16 @@ export default function App() {
     return seen.size
   }, [candidates])
 
+  const steamStats = useMemo(() => ({
+    demos: steamGames.filter((game) => game.hasDemo).length,
+    playtests: steamGames.filter((game) => game.hasPlaytest).length,
+    active: steamGames.filter((game) => (game.ccuCurrent ?? 0) > 0).length
+  }), [steamGames])
+
   const connect = async () => {
     setDashboardToken(token)
     await refreshAll()
+    if (tab === "steam") await refreshSteam()
   }
 
   const runNow = async () => {
@@ -145,12 +194,19 @@ export default function App() {
     }
   }
 
+  const pageTitle = tab === "keywords" ? "新增关键词"
+    : tab === "steam" ? "Steam 游戏"
+      : tab === "sites" ? "Sitemap 管理"
+        : tab === "runs" ? "运行记录"
+          : "异常中心"
+
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">ASF</span><div><strong>Auto Site Factory</strong><small>Discovery</small></div></div>
         <nav>
           <button className={tab === "keywords" ? "active" : ""} onClick={() => setTab("keywords")}>新增关键词</button>
+          <button className={tab === "steam" ? "active" : ""} onClick={() => setTab("steam")}>Steam 游戏</button>
           <button className={tab === "sites" ? "active" : ""} onClick={() => setTab("sites")}>Sitemap 管理</button>
           <button className={tab === "runs" ? "active" : ""} onClick={() => setTab("runs")}>运行记录</button>
           <button className={tab === "anomalies" ? "active" : ""} onClick={() => setTab("anomalies")}>异常中心 {anomalies.length > 0 && <span className="badge">{anomalies.length}</span>}</button>
@@ -159,13 +215,13 @@ export default function App() {
 
       <main>
         <header>
-          <div><p className="eyebrow">{tab === "keywords" ? "DISCOVERY" : "DISCOVERY / SITEMAP"}</p><h1>{tab === "keywords" ? "新增关键词" : tab === "sites" ? "Sitemap 管理" : tab === "runs" ? "运行记录" : "异常中心"}</h1></div>
+          <div><p className="eyebrow">{tab === "steam" ? "DISCOVERY / STEAM" : tab === "keywords" ? "DISCOVERY" : "DISCOVERY / SITEMAP"}</p><h1>{pageTitle}</h1></div>
           <div className="header-actions">
             <div className="token-control">
               <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Dashboard token（如已配置）" />
               <button onClick={() => void connect()}>连接</button>
             </div>
-            <button className="primary" onClick={runNow} disabled={busy}>{busy ? "启动中…" : "立即抓取"}</button>
+            {tab !== "steam" && <button className="primary" onClick={runNow} disabled={busy}>{busy ? "启动中…" : "立即抓取"}</button>}
           </div>
         </header>
 
@@ -223,6 +279,65 @@ export default function App() {
                 </tbody>
               </table>
               {candidates.length === 0 && <div className="empty">这个时间范围还没有新的 Discovery 候选</div>}
+            </div>
+          </section>
+        ) : tab === "steam" ? (
+          <section>
+            <div className="toolbar steam-toolbar">
+              <div className="segmented">{steamRanges.map((item) => <button key={item.value} className={steamRange === item.value ? "active" : ""} onClick={() => setSteamRange(item.value)}>{item.label}</button>)}</div>
+              <div className="steam-filters">
+                <select value={steamStatus} onChange={(event) => setSteamStatus(event.target.value)}>
+                  <option value="">全部状态</option>
+                  <option value="coming_soon">Coming Soon</option>
+                  <option value="demo">有 Demo</option>
+                  <option value="playtest">有 Playtest</option>
+                  <option value="released">Released</option>
+                  <option value="unavailable">Unavailable</option>
+                </select>
+                <select value={steamMinCcu} onChange={(event) => setSteamMinCcu(event.target.value)}>
+                  <option value="">全部 CCU</option>
+                  <option value="10">CCU ≥ 10</option>
+                  <option value="100">CCU ≥ 100</option>
+                  <option value="500">CCU ≥ 500</option>
+                </select>
+                <select value={steamSort} onChange={(event) => setSteamSort(event.target.value)}>
+                  <option value="recent">按首次发现</option>
+                  <option value="ccu">按 CCU</option>
+                  <option value="growth">按 24h 增长</option>
+                </select>
+                <label className="check"><input type="checkbox" checked={includeBaseline} onChange={(event) => setIncludeBaseline(event.target.checked)} />包含初始化基线</label>
+              </div>
+            </div>
+            <div className="stats">
+              <article><strong>{steamGames.length}</strong><span>当前列表</span></article>
+              <article><strong>{steamStats.demos} / {steamStats.playtests}</strong><span>Demo / Playtest</span></article>
+              <article><strong>{steamStats.active}</strong><span>当前 CCU &gt; 0</span></article>
+            </div>
+            <div className="card table-card">
+              <table>
+                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>24h 增长</th><th>Release</th></tr></thead>
+                <tbody>
+                  {steamGames.map((game) => (
+                    <tr key={game.appid}>
+                      <td>
+                        <a href={game.storeUrl ?? `https://store.steampowered.com/app/${game.appid}/`} target="_blank" rel="noreferrer"><strong>{game.name}</strong></a>
+                        <small className="muted">AppID {game.appid}{game.isBaseline ? " · baseline" : ""}</small>
+                      </td>
+                      <td>{formatTime(game.firstObservedAt)}</td>
+                      <td><span className={`status steam-${game.storeStatus}`}>{statusLabel(game.storeStatus)}</span></td>
+                      <td>{game.hasDemo ? (game.demoAppid ? <a href={`https://store.steampowered.com/app/${game.demoAppid}/`} target="_blank" rel="noreferrer">Yes ↗</a> : "Yes") : "—"}</td>
+                      <td>{game.hasPlaytest ? (game.playtestAppid ? <a href={`https://store.steampowered.com/app/${game.playtestAppid}/`} target="_blank" rel="noreferrer">Yes ↗</a> : "Yes") : "—"}</td>
+                      <td><strong>{formatNumber(game.ccuCurrent)}</strong>{game.ccuSource && <small className="muted">{game.ccuSource}</small>}</td>
+                      <td>{formatNumber(game.ccu24hPeak)}</td>
+                      <td>{formatNumber(game.ccu7dPeak)}</td>
+                      <td className={(game.ccu24hGrowthPct ?? 0) > 0 ? "positive" : (game.ccu24hGrowthPct ?? 0) < 0 ? "negative" : ""}>{game.ccu24hGrowthPct == null ? "—" : `${game.ccu24hGrowthPct > 0 ? "+" : ""}${game.ccu24hGrowthPct}%`}</td>
+                      <td>{game.releaseDateText ?? game.releaseDate ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {steamLoading && <div className="empty">正在刷新 Steam 游戏…</div>}
+              {!steamLoading && steamGames.length === 0 && <div className="empty">还没有符合条件的新 Steam 游戏。初始化基线默认不会混进新发现列表。</div>}
             </div>
           </section>
         ) : tab === "sites" ? (
