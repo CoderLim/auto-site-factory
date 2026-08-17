@@ -61,7 +61,7 @@ Run Steam lifecycle discovery/monitoring once:
 npm run steam:once
 ```
 
-The lifecycle monitor currently uses the keyless, deprecated `ISteamApps/GetAppList/v2` endpoint to establish a baseline and find newly observed AppIDs. New AppIDs are then classified with Steam Store metadata so only real games appear in the Steam Dashboard. The first run is baseline-only; later runs treat previously unseen AppIDs as discoveries.
+Steam has removed the old keyless `ISteamApps/GetAppList` method even though older documentation still marks it as deprecated. Until a Steam Web API key is available, the lifecycle monitor consumes the public `games_appid.json` mirror from `jsnli/steamappidlist`, which is generated daily from `IStoreService/GetAppList`. The monitor checks the mirror blob SHA before downloading the full list. The first run establishes a baseline; later mirror changes are diffed against the database and only previously unseen AppIDs become discoveries. Store metadata, Demo/Playtest detection and CCU are still fetched directly from Steam.
 
 For Discord realtime collection, complete the relay configuration described in [`docs/SOURCES.md`](docs/SOURCES.md), enable the Discord target, then run:
 
