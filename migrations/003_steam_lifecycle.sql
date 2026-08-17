@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS steam_games (
   has_playtest BOOLEAN NOT NULL DEFAULT FALSE,
   playtest_appid BIGINT,
   playtest_seen_at TIMESTAMPTZ,
+  ccu_source TEXT,
+  ccu_appid BIGINT,
   ccu_current INTEGER,
   ccu_24h_peak INTEGER,
   ccu_7d_peak INTEGER,
@@ -41,6 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_steam_games_ccu
 CREATE TABLE IF NOT EXISTS steam_game_snapshots (
   id BIGSERIAL PRIMARY KEY,
   appid BIGINT NOT NULL REFERENCES steam_games(appid) ON DELETE CASCADE,
+  source_appid BIGINT NOT NULL,
+  source_type TEXT NOT NULL,
   ccu INTEGER NOT NULL,
   recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
