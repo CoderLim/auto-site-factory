@@ -131,12 +131,13 @@ export class SteamRepository {
 
     await this.db.query(
       `INSERT INTO steam_games(
-         appid, name, first_observed_at, is_baseline, steam_last_modified_at,
+         appid, name, app_type, first_observed_at, is_baseline, steam_last_modified_at,
          price_change_number, store_url, created_at, updated_at
        )
        SELECT
          x.appid,
          x.name,
+         'game',
          NOW(),
          $2::boolean,
          CASE WHEN x.last_modified IS NULL THEN NULL ELSE to_timestamp(x.last_modified) END,
