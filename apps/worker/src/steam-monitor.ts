@@ -7,31 +7,28 @@ import {
   type SteamStoreDetails
 } from "@factory/database"
 
-const APP_LIST_STATE_KEY = "steam_app_list_sync"
+const APP_LIST_STATE_KEY = "steam_app_list_v2_keyless"
 const STORE_CHECK_LIMIT = Number(process.env.STEAM_STORE_CHECK_LIMIT ?? "200")
 const CCU_CHECK_LIMIT = Number(process.env.STEAM_CCU_CHECK_LIMIT ?? "300")
 
 interface AppListState {
   initializedAt?: string
-  lastSyncUnix?: number
+  lastSyncAt?: string
 }
 
-interface SteamAppListResponse {
-  response?: {
+interface SteamLegacyAppListResponse {
+  applist?: {
     apps?: Array<{
       appid: number
       name: string
-      last_modified?: number
-      price_change_number?: number
     }>
-    have_more_results?: boolean
-    last_appid?: number
   }
 }
 
 interface SteamAppDetailsResponse {
   success?: boolean
   data?: {
+    type?: string
     name?: string
     steam_appid?: number
     release_date?: { coming_soon?: boolean; date?: string }
@@ -69,72 +66,34 @@ function parseReleaseDate(value?: string): string | undefined {
   return new Date(time).toISOString().slice(0, 10)
 }
 
-async function fetchAppListPage(
-  apiKey: string,
-  options: { ifModifiedSince?: number; lastAppid?: number }
-): Promise<SteamAppListResponse["response"]> {
-  const input: Record<string, unknown> = {
-    include_games: true,
-    include_dlc: false,
-    include_software: false,
-    include_videos: false,
-    include_hardware: false,
-    max_results: 50000
-  }
-  if (options.ifModifiedSince) input.if_modified_since = options.ifModifiedSince
-  if (options.lastAppid) input.last_appid = options.lastAppid
-
-  // Use the public Web API host here. A normal user Web API key works with
-  // IStoreService/GetAppList; partner.steam-api.com is for publisher keys.
-  const url = new URL("https://api.steampowered.com/IStoreService/GetAppList/v1/")
-  url.searchParams.set("key", apiKey)
-  url.searchParams.set("input_json", JSON.stringify(input))
-
+async function fetchLegacyAppList(): Promise<SteamAppListItem[]> {
+  const url = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
   const response = await fetch(url, { headers: { "user-agent": "auto-site-factory/0.1" } })
-  if (!response.ok) throw new Error(`Steam GetAppList failed (${response.status}): ${await response.text()}`)
-  const payload = await response.json() as SteamAppListResponse
-  return payload.response
+  if (!response.ok) throw new Error(`Steam legacy GetAppList failed (${response.status}): ${await response.text()}`)
+
+  const payload = await response.json() as SteamLegacyAppListResponse
+  return (payload.applist?.apps ?? [])
+    .filter((item) => item.appid > 0 && item.name?.trim())
+    .map((item) => ({ appid: item.appid, name: item.name.trim() }))
 }
 
-async function syncAppList(repository: SteamRepository, apiKey: string): Promise<void> {
+async function syncAppList(repository: SteamRepository): Promise<void> {
   const state = await repository.getState<AppListState>(APP_LIST_STATE_KEY)
   const baseline = !state?.initializedAt
-  const syncStartedUnix = Math.floor(Date.now() / 1000)
-  let lastAppid: number | undefined
-  let fetched = 0
+  const items = await fetchLegacyAppList()
   let inserted = 0
-  let updated = 0
 
-  do {
-    const page = await fetchAppListPage(apiKey, {
-      ifModifiedSince: baseline ? undefined : state?.lastSyncUnix,
-      lastAppid
-    })
-    const items: SteamAppListItem[] = (page?.apps ?? [])
-      .filter((item) => item.appid > 0 && item.name?.trim())
-      .map((item) => ({
-        appid: item.appid,
-        name: item.name.trim(),
-        lastModified: item.last_modified,
-        priceChangeNumber: item.price_change_number
-      }))
-
-    fetched += items.length
-    for (const batch of chunks(items, 2000)) {
-      const result = await repository.upsertAppList(batch, baseline)
-      inserted += result.inserted
-      updated += result.updated
-    }
-
-    lastAppid = page?.have_more_results ? page.last_appid : undefined
-  } while (lastAppid)
+  for (const batch of chunks(items, 2000)) {
+    const result = await repository.upsertAppList(batch, baseline)
+    inserted += result.inserted
+  }
 
   await repository.setState(APP_LIST_STATE_KEY, {
     initializedAt: state?.initializedAt ?? new Date().toISOString(),
-    lastSyncUnix: syncStartedUnix
+    lastSyncAt: new Date().toISOString()
   } satisfies AppListState)
 
-  console.log(`[steam] app list baseline=${baseline} fetched=${fetched} inserted=${inserted} updated=${updated}`)
+  console.log(`[steam] legacy app list baseline=${baseline} fetched=${items.length} new=${inserted}`)
 }
 
 function detectPlaytest(html: string, mainAppid: number): { hasPlaytest: boolean; playtestAppid?: number } {
@@ -175,6 +134,18 @@ async function fetchStoreDetails(game: SteamGameSummary): Promise<SteamStoreDeta
     }
   }
 
+  const appType = entry.data.type?.trim().toLowerCase() || undefined
+  if (appType && appType !== "game") {
+    return {
+      name: entry.data.name,
+      appType,
+      status: "unavailable",
+      storeUrl,
+      hasDemo: false,
+      hasPlaytest: false
+    }
+  }
+
   const demoAppid = entry.data.demos?.map((demo) => demo.appid).find((appid): appid is number => typeof appid === "number")
   const releaseText = entry.data.release_date?.date?.trim() || undefined
   const status = entry.data.release_date?.coming_soon === true ? "coming_soon" : "released"
@@ -189,6 +160,7 @@ async function fetchStoreDetails(game: SteamGameSummary): Promise<SteamStoreDeta
 
   return {
     name: entry.data.name,
+    appType: appType ?? "game",
     status,
     storeUrl,
     releaseDateText: releaseText,
@@ -258,13 +230,10 @@ async function refreshCcu(repository: SteamRepository): Promise<void> {
 }
 
 export async function runSteamMonitorOnce(): Promise<void> {
-  const apiKey = process.env.STEAM_WEB_API_KEY?.trim()
-  if (!apiKey) throw new Error("STEAM_WEB_API_KEY is required for Steam discovery")
-
   const db = new Database()
   const repository = new SteamRepository(db)
   try {
-    await syncAppList(repository, apiKey)
+    await syncAppList(repository)
     await refreshStoreMetadata(repository)
     await refreshCcu(repository)
   } finally {
