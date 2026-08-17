@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { fileURLToPath } from "node:url"
-import { Database, DiscoveryRepository, SitemapRepository } from "@factory/database"
+import { Database, DiscoveryRepository, SitemapRepository, SteamRepository } from "@factory/database"
 import type { SignalSourceType, SourceTarget } from "@factory/shared"
 
 const port = Number(process.env.API_PORT ?? "8787")
@@ -30,7 +30,7 @@ async function readJson<T>(request: IncomingMessage): Promise<T> {
 }
 
 function sinceForRange(range: string | null): Date {
-  const hours = range === "30d" ? 30 * 24 : range === "7d" ? 7 * 24 : 24
+  const hours = range === "90d" ? 90 * 24 : range === "30d" ? 30 * 24 : range === "7d" ? 7 * 24 : 24
   return new Date(Date.now() - hours * 60 * 60 * 1000)
 }
 
@@ -56,6 +56,7 @@ const server = createServer(async (request, response) => {
   const db = new Database()
   const sitemap = new SitemapRepository(db)
   const discovery = new DiscoveryRepository(db)
+  const steam = new SteamRepository(db)
 
   try {
     if (request.method === "GET" && url.pathname === "/api/discovery/candidates") {
@@ -66,6 +67,25 @@ const server = createServer(async (request, response) => {
         discovery.countEnabledTargets()
       ])
       return sendJson(response, 200, { candidates, enabledTargetCount })
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/steam/games") {
+      const range = url.searchParams.get("range")
+      const status = url.searchParams.get("status") || undefined
+      const minCcuRaw = url.searchParams.get("minCcu")
+      const minCcu = minCcuRaw ? Number(minCcuRaw) : undefined
+      const includeBaseline = url.searchParams.get("includeBaseline") === "true"
+      const sortRaw = url.searchParams.get("sort")
+      const sort = sortRaw === "ccu" || sortRaw === "growth" ? sortRaw : "recent"
+      return sendJson(response, 200, {
+        games: await steam.listGames({
+          since: sinceForRange(range),
+          status,
+          minCcu: Number.isFinite(minCcu) ? minCcu : undefined,
+          includeBaseline,
+          sort
+        })
+      })
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {

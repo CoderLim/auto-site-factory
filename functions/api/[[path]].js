@@ -1,5 +1,5 @@
 import { Client } from "pg"
-import { DiscoveryRepository, SitemapRepository } from "@factory/database"
+import { DiscoveryRepository, SitemapRepository, SteamRepository } from "@factory/database"
 
 const DEFAULT_REPOSITORY = "CoderLim/auto-site-factory"
 const DEFAULT_WORKFLOW = "discovery-cron.yml"
@@ -16,7 +16,7 @@ function authorized(request, env) {
 }
 
 function sinceForRange(range) {
-  const hours = range === "30d" ? 30 * 24 : range === "7d" ? 7 * 24 : 24
+  const hours = range === "90d" ? 90 * 24 : range === "30d" ? 30 * 24 : range === "7d" ? 7 * 24 : 24
   return new Date(Date.now() - hours * 60 * 60 * 1000)
 }
 
@@ -36,7 +36,8 @@ async function withRepos(env, callback) {
   try {
     return await callback({
       sitemap: new SitemapRepository(database),
-      discovery: new DiscoveryRepository(database)
+      discovery: new DiscoveryRepository(database),
+      steam: new SteamRepository(database)
     })
   } finally {
     await client.end()
@@ -94,6 +95,25 @@ export async function onRequest(context) {
         ])
         return json({ candidates, enabledTargetCount })
       })
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/steam/games") {
+      const range = url.searchParams.get("range")
+      const status = url.searchParams.get("status") || undefined
+      const minCcuRaw = url.searchParams.get("minCcu")
+      const minCcu = minCcuRaw ? Number(minCcuRaw) : undefined
+      const includeBaseline = url.searchParams.get("includeBaseline") === "true"
+      const sortRaw = url.searchParams.get("sort")
+      const sort = sortRaw === "ccu" || sortRaw === "growth" ? sortRaw : "recent"
+      return await withRepos(env, async ({ steam }) => json({
+        games: await steam.listGames({
+          since: sinceForRange(range),
+          status,
+          minCcu: Number.isFinite(minCcu) ? minCcu : undefined,
+          includeBaseline,
+          sort
+        })
+      }))
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {
