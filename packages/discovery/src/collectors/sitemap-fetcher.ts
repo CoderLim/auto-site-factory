@@ -15,6 +15,11 @@ export interface SitemapFetchOptions {
   curlFallback?: boolean
 }
 
+export interface SitemapCollectionResult {
+  urls: string[]
+  sitemapCount: number
+}
+
 export function decodeSitemapBytes(bytes: Uint8Array): string {
   const data = bytes[0] === GZIP_MAGIC_0 && bytes[1] === GZIP_MAGIC_1
     ? gunzipSync(bytes)
@@ -42,29 +47,34 @@ export async function fetchSitemapText(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), options.timeoutSeconds * 1000)
   try {
-    const response = await fetchImpl(url, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent": options.userAgent,
-        Accept: "application/xml,text/xml,text/plain,application/gzip,*/*;q=0.8"
+    try {
+      const response = await fetchImpl(url, {
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          "user-agent": options.userAgent,
+          Accept: "application/xml,text/xml,text/plain,application/gzip,*/*;q=0.8"
+        }
+      })
+      if (response.status === 403 && options.curlFallback !== false) {
+        return decodeSitemapBytes(await curlGet(url, options.userAgent, options.timeoutSeconds))
       }
-    })
-    if (response.status === 403 && options.curlFallback !== false) {
+      if (!response.ok) throw new Error(`Sitemap ${response.status}: ${url}`)
+      return decodeSitemapBytes(new Uint8Array(await response.arrayBuffer()))
+    } catch (error) {
+      if (options.curlFallback === false) throw error
       return decodeSitemapBytes(await curlGet(url, options.userAgent, options.timeoutSeconds))
     }
-    if (!response.ok) throw new Error(`Sitemap ${response.status}: ${url}`)
-    return decodeSitemapBytes(new Uint8Array(await response.arrayBuffer()))
   } finally {
     clearTimeout(timer)
   }
 }
 
-export async function collectSitemapUrls(
+export async function collectSitemap(
   roots: string[],
   fetchImpl: typeof fetch,
   options: SitemapFetchOptions
-): Promise<string[]> {
+): Promise<SitemapCollectionResult> {
   const queue = [...roots]
   const visited = new Set<string>()
   const seenUrls = new Set<string>()
@@ -91,5 +101,13 @@ export async function collectSitemapUrls(
     }
   }
 
-  return urls
+  return { urls, sitemapCount: visited.size }
+}
+
+export async function collectSitemapUrls(
+  roots: string[],
+  fetchImpl: typeof fetch,
+  options: SitemapFetchOptions
+): Promise<string[]> {
+  return (await collectSitemap(roots, fetchImpl, options)).urls
 }
