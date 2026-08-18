@@ -1,0 +1,26 @@
+[
+  {
+    "id": "wiki-gg-discovery",
+    "sourceType": "wiki_gg",
+    "name": "wiki.gg New Wikis",
+    "scope": "games",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "baselineOnFirstRun": true,
+      "maxNewWikis": 100,
+      "minWikiCount": 50,
+      "urls": [
+        "https://www.wiki.gg/wikis",
+        "https://support.wiki.gg/index.php?title=Module%3AWikis%2Flist.json&action=raw&ctype=application%2Fjson",
+        "https://support.wiki.gg/api.php?action=query&prop=revisions&rvprop=content&rvslots=main&titles=Module%3AWikis%2Flist.json&format=json&formatversion=2"
+      ],
+      "ignoredSlugs": [
+        "support",
+        "commons",
+        "test",
+        "defaultloadout"
+      ]
+    }
+  }
+]
