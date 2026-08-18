@@ -7,10 +7,14 @@
     "enabled": true,
     "config": {
       "sourceRole": "discovery",
-      "sitemapUrl": "https://poki.com/en/sitemaps/games.xml",
+      "sitemapUrl": "https://poki.com/en/sitemaps/index.xml",
+      "urlIncludes": [
+        "/en/g/"
+      ],
       "entityType": "GAME",
       "baselineOnFirstRun": true,
       "fetchPageMetadata": true,
+      "maxSitemaps": 50,
       "maxUrls": 100000,
       "maxNewUrls": 50
     }
@@ -39,21 +43,15 @@
     "enabled": true,
     "config": {
       "sourceRole": "discovery",
-      "sitemapUrls": [
-        "https://www.gamepix.com/sitemaps/games-1.xml",
-        "https://www.gamepix.com/sitemaps/games-2.xml",
-        "https://www.gamepix.com/sitemaps/games-3.xml",
-        "https://www.gamepix.com/sitemaps/games-4.xml",
-        "https://www.gamepix.com/sitemaps/games-5.xml",
-        "https://www.gamepix.com/sitemaps/games-6.xml",
-        "https://www.gamepix.com/sitemaps/games-7.xml",
-        "https://www.gamepix.com/sitemaps/games-8.xml"
+      "sitemapUrl": "https://www.gamepix.com/sitemaps/index.xml",
+      "urlIncludes": [
+        "/play/"
       ],
       "entityType": "GAME",
       "baselineOnFirstRun": true,
       "fetchPageMetadata": true,
       "curlFallback": true,
-      "maxSitemaps": 50,
+      "maxSitemaps": 100,
       "maxUrls": 100000,
       "maxNewUrls": 50
     }
@@ -98,10 +96,14 @@
     "enabled": true,
     "config": {
       "sourceRole": "discovery",
-      "sitemapUrl": "https://img.y8.com/sitemaps/y8/en/sitemap2.xml.gz",
+      "sitemapUrl": "https://www.y8.com/sitemaps/y8/en/sitemap.xml.gz",
+      "urlIncludes": [
+        "/games/"
+      ],
       "entityType": "GAME",
       "baselineOnFirstRun": true,
       "fetchPageMetadata": true,
+      "maxSitemaps": 50,
       "maxUrls": 100000,
       "maxNewUrls": 50
     }
