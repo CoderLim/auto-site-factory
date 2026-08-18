@@ -4,6 +4,11 @@ import { newId, type SignalSourceType, type SourceTarget } from "@factory/shared
 
 const POLLING_SOURCES = new Set<SignalSourceType>(["official_api", "wiki", "reddit", "youtube", "x", "sitemap"])
 
+function numberFromCursor(cursor: Record<string, unknown> | undefined, key: string): number | undefined {
+  const value = cursor?.[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined
+}
+
 async function collectTarget(
   runId: string,
   target: SourceTarget,
@@ -26,7 +31,21 @@ async function collectTarget(
     if (result.afterPersist) await result.afterPersist()
     if (result.nextCursor) await repository.saveCursor(target.id, result.nextCursor)
     await repository.finishRunTarget(runId, target.id, "SUCCESS", inserted)
-    console.log(`[worker] ${target.sourceType}:${target.name} -> ${inserted} new signals`)
+
+    if (target.sourceType === "sitemap") {
+      const fetchedUrls = numberFromCursor(result.nextCursor, "discoveredUrlCount")
+      const filteredUrls = numberFromCursor(result.nextCursor, "urlCount")
+      const sitemapCount = numberFromCursor(result.nextCursor, "sitemapCount")
+      const pending = numberFromCursor(result.nextCursor, "pendingNewUrls")
+      console.log(
+        `[worker] sitemap:${target.name} -> ${inserted} new signals` +
+        ` · ${filteredUrls ?? "?"}/${fetchedUrls ?? "?"} URLs after filter` +
+        ` · ${sitemapCount ?? "?"} sitemap(s)` +
+        ` · ${pending ?? 0} pending`
+      )
+    } else {
+      console.log(`[worker] ${target.sourceType}:${target.name} -> ${inserted} new signals`)
+    }
     return { inserted, failed: false }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
