@@ -6,7 +6,7 @@ import {
   configStringArray,
   makeSignal
 } from "./base.js"
-import { collectSitemapUrls } from "./sitemap-fetcher.js"
+import { collectSitemap } from "./sitemap-fetcher.js"
 import { extractKeywordFromUrl } from "./sitemap-keywords.js"
 export { parseSitemapDocument, parseTextSitemap, parseXmlSitemap } from "./sitemap-parser.js"
 export { extractKeywordFromUrl } from "./sitemap-keywords.js"
@@ -76,14 +76,14 @@ export const sitemapCollector: Collector = {
     const fetchMetadata = configBoolean(target.config, "fetchPageMetadata", true)
     const curlFallback = configBoolean(target.config, "curlFallback", true)
 
-    const discoveredUrls = await collectSitemapUrls(roots, context.fetch, {
+    const collection = await collectSitemap(roots, context.fetch, {
       userAgent,
       timeoutSeconds,
       maxSitemaps,
       maxUrls,
       curlFallback
     })
-    const urls = discoveredUrls.filter((url) => matchesFilters(url, includes, excludes))
+    const urls = collection.urls.filter((url) => matchesFilters(url, includes, excludes))
     const entries: SitemapUrlEntry[] = urls.map((url) => ({
       url,
       keyword: extractKeywordFromUrl(url)
@@ -146,6 +146,8 @@ export const sitemapCollector: Collector = {
           initialized: true,
           snapshotAt: context.now.toISOString(),
           sitemapUrls: roots,
+          sitemapCount: collection.sitemapCount,
+          discoveredUrlCount: collection.urls.length,
           urlCount: urls.length,
           pendingNewUrls: Math.max(0, pendingCount - newUrls.length)
         }
@@ -159,6 +161,9 @@ export const sitemapCollector: Collector = {
               ])].slice(-maxUrls),
           snapshotAt: context.now.toISOString(),
           sitemapUrls: roots,
+          sitemapCount: collection.sitemapCount,
+          discoveredUrlCount: collection.urls.length,
+          urlCount: urls.length,
           pendingNewUrls: pendingCount
         }
 
