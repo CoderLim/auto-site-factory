@@ -1,6 +1,7 @@
 export type SignalSourceType =
   | "official_api"
   | "wiki"
+  | "wiki_gg"
   | "reddit"
   | "youtube"
   | "discord"

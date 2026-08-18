@@ -3,12 +3,14 @@ import { officialApiCollector } from "./official-api.js"
 import { redditCollector } from "./reddit.js"
 import { sitemapCollector } from "./sitemap.js"
 import { wikiCollector } from "./wiki.js"
+import { wikiGgCollector } from "./wiki-gg.js"
 import { xCollector } from "./x.js"
 import { youtubeCollector } from "./youtube.js"
 
 const collectors: Partial<Record<SignalSourceType, Collector>> = {
   official_api: officialApiCollector,
   wiki: wikiCollector,
+  wiki_gg: wikiGgCollector,
   reddit: redditCollector,
   youtube: youtubeCollector,
   x: xCollector,
@@ -20,3 +22,4 @@ export function getCollector(type: SignalSourceType): Collector | undefined {
 }
 
 export * from "./sitemap.js"
+export * from "./wiki-gg.js"

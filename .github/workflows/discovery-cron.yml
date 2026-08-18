@@ -54,5 +54,10 @@ jobs:
           SOURCE_TARGETS_FILE: config/sitemap-targets.migrated.json
         run: node apps/worker/dist/sync-targets.js
 
+      - name: Sync wiki.gg discovery target
+        env:
+          SOURCE_TARGETS_FILE: config/wiki-gg-targets.json
+        run: node apps/worker/dist/sync-targets.js
+
       - name: Run discovery once
         run: node apps/worker/dist/index.js --once
