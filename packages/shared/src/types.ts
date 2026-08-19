@@ -64,7 +64,8 @@ export interface SitemapStateStore {
     entries: SitemapUrlEntry[],
     seenAt: Date,
     baselineOnFirstRun: boolean,
-    limit: number
+    limit: number,
+    suppressNew?: boolean
   ): Promise<SitemapReconcileResult>
   markEmitted(targetId: string, urls: string[], emittedAt: Date): Promise<void>
   updateMetadata(
