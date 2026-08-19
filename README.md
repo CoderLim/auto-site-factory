@@ -61,7 +61,7 @@ Run Steam lifecycle discovery/monitoring once:
 npm run steam:once
 ```
 
-Steam has removed the old keyless `ISteamApps/GetAppList` method even though older documentation still marks it as deprecated. Until a Steam Web API key is available, the lifecycle monitor consumes the public `games_appid.json` mirror from `jsnli/steamappidlist`, which is generated daily from `IStoreService/GetAppList`. The monitor checks the mirror blob SHA before downloading the full list. The first run establishes a baseline; later mirror changes are diffed against the database and only previously unseen AppIDs become discoveries. Store metadata, Demo/Playtest detection and CCU are still fetched directly from Steam.
+Steam lifecycle discovery uses `IStoreService/GetAppList` with `include_games=true`, `if_modified_since`, and `last_appid`. It requires `STEAM_WEB_API_KEY`. The existing historical game set remains the baseline; when migrating from the temporary daily mirror, the first official sync re-reads a seven-day modification window and inserts only AppIDs that are not already in the database. Later runs advance an incremental timestamp cursor, so new-game discovery no longer waits for the daily mirror. Store metadata, Demo/Playtest detection and CCU are fetched directly from Steam. The GitHub Actions lifecycle workflow runs hourly.
 
 For Discord realtime collection, complete the relay configuration described in [`docs/SOURCES.md`](docs/SOURCES.md), enable the Discord target, then run:
 
