@@ -7,28 +7,37 @@ import {
   type SteamStoreDetails
 } from "@factory/database"
 
-const APP_LIST_STATE_KEY = "steam_games_mirror_v1"
-const DEFAULT_GAME_LIST_METADATA_URL = "https://api.github.com/repos/jsnli/steamappidlist/contents/data/games_appid.json?ref=master"
-const DEFAULT_GAME_LIST_RAW_URL = "https://raw.githubusercontent.com/jsnli/steamappidlist/master/data/games_appid.json"
+const APP_LIST_STATE_KEY = "steam_store_service_v1"
+const LEGACY_MIRROR_STATE_KEY = "steam_games_mirror_v1"
+const DEFAULT_APP_LIST_URL = "https://api.steampowered.com/IStoreService/GetAppList/v1/"
+const DEFAULT_FIRST_SYNC_LOOKBACK_SECONDS = 7 * 24 * 60 * 60
 const STORE_CHECK_LIMIT = Number(process.env.STEAM_STORE_CHECK_LIMIT ?? "200")
 const CCU_CHECK_LIMIT = Number(process.env.STEAM_CCU_CHECK_LIMIT ?? "300")
 
 interface AppListState {
   initializedAt?: string
   lastSyncAt?: string
-  sourceSha?: string
+  ifModifiedSince?: number
 }
 
-interface GameListMetadata {
-  sha?: string
-  download_url?: string
+interface LegacyMirrorState {
+  initializedAt?: string
+  lastSyncAt?: string
 }
 
-interface SteamMirrorApp {
+interface SteamStoreApp {
   appid?: number
   name?: string
   last_modified?: number
   price_change_number?: number
+}
+
+interface SteamAppListResponse {
+  response?: {
+    apps?: SteamStoreApp[]
+    have_more_results?: boolean
+    last_appid?: number
+  }
 }
 
 interface SteamAppDetailsResponse {
@@ -72,35 +81,45 @@ function parseReleaseDate(value?: string): string | undefined {
   return new Date(time).toISOString().slice(0, 10)
 }
 
-async function fetchGameListMetadata(): Promise<GameListMetadata | undefined> {
-  const metadataUrl = process.env.STEAM_GAME_LIST_METADATA_URL?.trim() || DEFAULT_GAME_LIST_METADATA_URL
-  try {
-    const response = await fetch(metadataUrl, {
-      headers: {
-        accept: "application/vnd.github+json",
-        "user-agent": "auto-site-factory/0.1"
-      }
-    })
-    if (!response.ok) {
-      console.warn(`[steam] game list metadata unavailable (${response.status}); falling back to raw download`)
-      return undefined
-    }
-    return await response.json() as GameListMetadata
-  } catch (error) {
-    console.warn("[steam] game list metadata request failed; falling back to raw download", error)
-    return undefined
-  }
+function requireSteamApiKey(): string {
+  const key = process.env.STEAM_WEB_API_KEY?.trim()
+  if (!key) throw new Error("Missing required environment variable: STEAM_WEB_API_KEY")
+  return key
 }
 
-async function fetchGameMirror(url: string): Promise<SteamAppListItem[]> {
+function firstSyncLookbackSeconds(): number {
+  const configured = Number(process.env.STEAM_APP_LIST_FIRST_SYNC_LOOKBACK_SECONDS ?? DEFAULT_FIRST_SYNC_LOOKBACK_SECONDS)
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : DEFAULT_FIRST_SYNC_LOOKBACK_SECONDS
+}
+
+async function fetchAppListPage(options: {
+  key: string
+  ifModifiedSince?: number
+  lastAppid?: number
+}): Promise<{ items: SteamAppListItem[]; haveMore: boolean; lastAppid?: number }> {
+  const endpoint = process.env.STEAM_APP_LIST_URL?.trim() || DEFAULT_APP_LIST_URL
+  const url = new URL(endpoint)
+  url.searchParams.set("key", options.key)
+  url.searchParams.set("include_games", "true")
+  url.searchParams.set("include_dlc", "false")
+  url.searchParams.set("include_software", "false")
+  url.searchParams.set("include_videos", "false")
+  url.searchParams.set("include_hardware", "false")
+  url.searchParams.set("max_results", "50000")
+  if (options.ifModifiedSince != null) url.searchParams.set("if_modified_since", String(options.ifModifiedSince))
+  if (options.lastAppid != null) url.searchParams.set("last_appid", String(options.lastAppid))
+
   const response = await fetch(url, { headers: { "user-agent": "auto-site-factory/0.1" } })
-  if (!response.ok) throw new Error(`Steam game mirror failed (${response.status}): ${await response.text()}`)
+  if (!response.ok) {
+    const body = (await response.text()).slice(0, 500)
+    throw new Error(`Steam IStoreService/GetAppList failed (${response.status}): ${body}`)
+  }
 
-  const payload = await response.json() as SteamMirrorApp[]
-  if (!Array.isArray(payload)) throw new Error("Steam game mirror returned a non-array payload")
+  const payload = await response.json() as SteamAppListResponse
+  if (!payload.response) throw new Error("Steam IStoreService/GetAppList returned an invalid response")
 
-  return payload
-    .filter((item): item is SteamMirrorApp & { appid: number; name: string } =>
+  const items = (payload.response.apps ?? [])
+    .filter((item): item is SteamStoreApp & { appid: number; name: string } =>
       typeof item.appid === "number" && item.appid > 0 && typeof item.name === "string" && Boolean(item.name.trim())
     )
     .map((item) => ({
@@ -109,34 +128,67 @@ async function fetchGameMirror(url: string): Promise<SteamAppListItem[]> {
       lastModified: item.last_modified,
       priceChangeNumber: item.price_change_number
     }))
+
+  const responseLastAppid = Number(payload.response.last_appid)
+  return {
+    items,
+    haveMore: payload.response.have_more_results === true,
+    lastAppid: Number.isFinite(responseLastAppid) && responseLastAppid > 0
+      ? responseLastAppid
+      : items.at(-1)?.appid
+  }
 }
 
 async function syncAppList(repository: SteamRepository): Promise<void> {
+  const key = requireSteamApiKey()
   const state = await repository.getState<AppListState>(APP_LIST_STATE_KEY)
-  const metadata = await fetchGameListMetadata()
+  const legacyState = state?.initializedAt
+    ? undefined
+    : await repository.getState<LegacyMirrorState>(LEGACY_MIRROR_STATE_KEY)
 
-  if (state?.initializedAt && metadata?.sha && metadata.sha === state.sourceSha) {
-    console.log(`[steam] game mirror unchanged sha=${metadata.sha}; skipping app-list diff`)
-    return
-  }
+  const syncStartedAt = Math.floor(Date.now() / 1000)
+  const hasExistingBaseline = Boolean(legacyState?.initializedAt)
+  const baseline = !state?.initializedAt && !hasExistingBaseline
+  const ifModifiedSince = baseline
+    ? undefined
+    : state?.ifModifiedSince ?? Math.max(0, syncStartedAt - firstSyncLookbackSeconds())
 
-  const rawUrl = process.env.STEAM_GAME_LIST_URL?.trim() || metadata?.download_url || DEFAULT_GAME_LIST_RAW_URL
-  const items = await fetchGameMirror(rawUrl)
-  const baseline = !state?.initializedAt
+  let lastAppid: number | undefined
+  let pages = 0
+  let fetched = 0
   let inserted = 0
 
-  for (const batch of chunks(items, 2000)) {
-    const result = await repository.upsertAppList(batch, baseline)
-    inserted += result.inserted
+  while (true) {
+    const page = await fetchAppListPage({ key, ifModifiedSince, lastAppid })
+    pages += 1
+    fetched += page.items.length
+
+    for (const batch of chunks(page.items, 2000)) {
+      const result = await repository.upsertAppList(batch, baseline)
+      inserted += result.inserted
+    }
+
+    if (!page.haveMore) break
+
+    const nextLastAppid = page.lastAppid
+    if (!nextLastAppid || nextLastAppid === lastAppid) {
+      throw new Error("Steam IStoreService/GetAppList pagination did not advance")
+    }
+    lastAppid = nextLastAppid
+
+    if (pages >= 100) throw new Error("Steam IStoreService/GetAppList exceeded 100 pages")
   }
 
   await repository.setState(APP_LIST_STATE_KEY, {
     initializedAt: state?.initializedAt ?? new Date().toISOString(),
     lastSyncAt: new Date().toISOString(),
-    sourceSha: metadata?.sha ?? state?.sourceSha
+    // Re-read a small overlap on the next run so a change landing on the boundary is not missed.
+    ifModifiedSince: Math.max(0, syncStartedAt - 60)
   } satisfies AppListState)
 
-  console.log(`[steam] game mirror baseline=${baseline} fetched=${items.length} new=${inserted} sha=${metadata?.sha ?? "unknown"}`)
+  console.log(
+    `[steam] app list source=IStoreService baseline=${baseline} since=${ifModifiedSince ?? "full"} pages=${pages} fetched=${fetched} new=${inserted}`
+  )
 }
 
 function detectPlaytest(html: string, mainAppid: number): { hasPlaytest: boolean; playtestAppid?: number } {
