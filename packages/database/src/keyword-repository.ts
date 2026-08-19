@@ -1,0 +1,140 @@
+import { newId, type SignalSourceType } from "@factory/shared"
+import type { Database } from "./client.js"
+
+export type KeywordSeedRow = {
+  entityId: string
+  name: string
+  entityType: string
+  scope: string
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+export type KeywordCandidateInput = {
+  entityId: string
+  keyword: string
+  normalizedKeyword: string
+  status: "pending_validation" | "low_searchability"
+  searchabilityScore: number
+  generationKind: "entity_name" | "scope_context"
+  generationReasons: string[]
+  firstSeenAt: string
+  lastSeenAt: string
+}
+
+export type KeywordCandidateRow = KeywordCandidateInput & {
+  id: string
+  entityName: string
+  entityType: string
+  scope: string
+  sourceTypes: string[]
+  mentionCount: number
+}
+
+export class KeywordRepository {
+  constructor(private readonly db: Database) {}
+
+  async listMissingSeeds(limit = 1000): Promise<KeywordSeedRow[]> {
+    const result = await this.db.query(
+      `SELECT e.id AS entity_id, e.canonical_name, e.entity_type, e.scope,
+              c.first_seen_at, c.last_seen_at
+       FROM candidates c
+       JOIN entities e ON e.id = c.entity_id
+       LEFT JOIN keyword_candidates kc ON kc.entity_id = e.id
+       WHERE kc.id IS NULL
+       ORDER BY c.first_seen_at ASC, c.id ASC
+       LIMIT $1`,
+      [limit]
+    )
+
+    return result.rows.map((row) => ({
+      entityId: String(row.entity_id),
+      name: String(row.canonical_name),
+      entityType: String(row.entity_type),
+      scope: String(row.scope),
+      firstSeenAt: new Date(String(row.first_seen_at)).toISOString(),
+      lastSeenAt: new Date(String(row.last_seen_at)).toISOString()
+    }))
+  }
+
+  async saveGenerated(items: KeywordCandidateInput[]): Promise<number> {
+    if (items.length === 0) return 0
+    const payload = items.map((item) => ({ id: newId("kw"), ...item }))
+    const result = await this.db.query(
+      `INSERT INTO keyword_candidates (
+         id, entity_id, keyword, normalized_keyword, status, searchability_score,
+         generation_kind, generation_reasons, first_seen_at, last_seen_at
+       )
+       SELECT item.id, item."entityId", item.keyword, item."normalizedKeyword",
+              item.status, item."searchabilityScore", item."generationKind",
+              item."generationReasons", item."firstSeenAt", item."lastSeenAt"
+       FROM jsonb_to_recordset($1::jsonb) AS item(
+         id TEXT, "entityId" TEXT, keyword TEXT, "normalizedKeyword" TEXT,
+         status TEXT, "searchabilityScore" INTEGER, "generationKind" TEXT,
+         "generationReasons" JSONB, "firstSeenAt" TIMESTAMPTZ, "lastSeenAt" TIMESTAMPTZ
+       )
+       ON CONFLICT (entity_id, normalized_keyword) DO UPDATE SET
+         keyword = EXCLUDED.keyword,
+         status = EXCLUDED.status,
+         searchability_score = EXCLUDED.searchability_score,
+         generation_kind = EXCLUDED.generation_kind,
+         generation_reasons = EXCLUDED.generation_reasons,
+         last_seen_at = GREATEST(keyword_candidates.last_seen_at, EXCLUDED.last_seen_at),
+         updated_at = NOW()`,
+      [JSON.stringify(payload)]
+    )
+    return result.rowCount ?? 0
+  }
+
+  async listKeywords(
+    since: Date,
+    options: { sourceType?: SignalSourceType; status?: string; limit?: number } = {}
+  ): Promise<KeywordCandidateRow[]> {
+    const limit = options.limit ?? 500
+    const params: unknown[] = [since.toISOString()]
+    const where = ["kc.first_seen_at >= $1"]
+
+    if (options.status) {
+      params.push(options.status)
+      where.push(`kc.status = $${params.length}`)
+    }
+    if (options.sourceType) {
+      params.push(options.sourceType)
+      where.push(`$${params.length} = ANY(c.source_types)`)
+    }
+    params.push(limit)
+
+    const result = await this.db.query(
+      `SELECT kc.id, kc.entity_id, kc.keyword, kc.normalized_keyword, kc.status,
+              kc.searchability_score, kc.generation_kind, kc.generation_reasons,
+              kc.first_seen_at, kc.last_seen_at,
+              e.canonical_name, e.entity_type, e.scope,
+              c.source_types, c.mention_count
+       FROM keyword_candidates kc
+       JOIN entities e ON e.id = kc.entity_id
+       JOIN candidates c ON c.entity_id = kc.entity_id
+       WHERE ${where.join(" AND ")}
+       ORDER BY kc.searchability_score DESC, kc.first_seen_at DESC, kc.id DESC
+       LIMIT $${params.length}`,
+      params
+    )
+
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      entityId: String(row.entity_id),
+      keyword: String(row.keyword),
+      normalizedKeyword: String(row.normalized_keyword),
+      status: String(row.status) as KeywordCandidateRow["status"],
+      searchabilityScore: Number(row.searchability_score ?? 0),
+      generationKind: String(row.generation_kind) as KeywordCandidateRow["generationKind"],
+      generationReasons: Array.isArray(row.generation_reasons) ? row.generation_reasons.map(String) : [],
+      firstSeenAt: new Date(String(row.first_seen_at)).toISOString(),
+      lastSeenAt: new Date(String(row.last_seen_at)).toISOString(),
+      entityName: String(row.canonical_name),
+      entityType: String(row.entity_type),
+      scope: String(row.scope),
+      sourceTypes: Array.isArray(row.source_types) ? row.source_types.map(String) : [],
+      mentionCount: Number(row.mention_count ?? 0)
+    }))
+  }
+}
