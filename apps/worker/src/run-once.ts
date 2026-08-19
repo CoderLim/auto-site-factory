@@ -1,5 +1,5 @@
-import { Database, DiscoveryRepository, SitemapRepository } from "@factory/database"
-import { getCollector, processPendingSignals } from "@factory/discovery"
+import { Database, DiscoveryRepository, KeywordRepository, SitemapRepository } from "@factory/database"
+import { generateKeywordCandidate, getCollector, processPendingSignals } from "@factory/discovery"
 import { newId, type SignalSourceType, type SourceTarget } from "@factory/shared"
 
 const POLLING_SOURCES = new Set<SignalSourceType>(["official_api", "wiki", "wiki_gg", "reddit", "youtube", "x", "sitemap"])
@@ -55,10 +55,35 @@ async function collectTarget(
   }
 }
 
+async function generateMissingKeywords(repository: KeywordRepository): Promise<{ generated: number; lowSearchability: number }> {
+  let generated = 0
+  let lowSearchability = 0
+
+  while (true) {
+    const seeds = await repository.listMissingSeeds(1000)
+    if (seeds.length === 0) break
+
+    const items = seeds.flatMap((seed) => {
+      const item = generateKeywordCandidate(seed)
+      return item ? [item] : []
+    })
+
+    await repository.saveGenerated(items)
+    generated += items.length
+    lowSearchability += items.filter((item) => item.status === "low_searchability").length
+
+    if (seeds.length < 1000) break
+    if (items.length === 0) break
+  }
+
+  return { generated, lowSearchability }
+}
+
 export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<void> {
   const db = new Database()
   const repository = new DiscoveryRepository(db)
   const sitemapRepository = new SitemapRepository(db)
+  const keywordRepository = new KeywordRepository(db)
   const runId = newId("run")
   await repository.createRun(runId)
 
@@ -81,6 +106,8 @@ export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<v
       if (batch.processed < 500) break
     }
 
+    const keywordResult = await generateMissingKeywords(keywordRepository)
+
     const status = failures.length === 0
       ? "SUCCESS"
       : failures.length < Math.max(1, targets.length)
@@ -94,7 +121,11 @@ export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<v
       newCandidates,
       failures.map((item) => item.error).filter(Boolean).join(" | ") || undefined
     )
-    console.log(`[worker] run=${runId} source=${sourceType ?? "all"} status=${status} signals=${signalCount} processed=${processed} newCandidates=${newCandidates}`)
+    console.log(
+      `[worker] run=${runId} source=${sourceType ?? "all"} status=${status}` +
+      ` signals=${signalCount} processed=${processed} newCandidates=${newCandidates}` +
+      ` keywordCandidates=${keywordResult.generated} lowSearchability=${keywordResult.lowSearchability}`
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await repository.finishRun(runId, "FAILED", 0, 0, message)
