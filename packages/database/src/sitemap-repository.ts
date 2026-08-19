@@ -68,14 +68,15 @@ export class SitemapRepository implements SitemapStateStore {
     entries: SitemapUrlEntry[],
     seenAt: Date,
     baselineOnFirstRun: boolean,
-    limit: number
+    limit: number,
+    suppressNew = false
   ): Promise<SitemapReconcileResult> {
     const existing = await this.db.query<{ count: number }>(
       `SELECT COUNT(*)::int AS count FROM sitemap_urls WHERE source_target_id = $1`,
       [targetId]
     )
     const initialized = (existing.rows[0]?.count ?? 0) > 0
-    const suppressNew = !initialized && baselineOnFirstRun
+    const shouldSuppressNew = suppressNew || (!initialized && baselineOnFirstRun)
     const payload = entries.map((entry) => ({
       url: entry.url,
       keyword: entry.keyword ?? null
@@ -95,7 +96,7 @@ export class SitemapRepository implements SitemapStateStore {
            keyword = COALESCE(EXCLUDED.keyword, sitemap_urls.keyword),
            last_seen_at = EXCLUDED.last_seen_at,
            is_active = TRUE`,
-        [targetId, JSON.stringify(payload), seenAtIso, suppressNew]
+        [targetId, JSON.stringify(payload), seenAtIso, shouldSuppressNew]
       )
     }
 
