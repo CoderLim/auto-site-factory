@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { fileURLToPath } from "node:url"
-import { Database, DiscoveryRepository, SitemapRepository, SteamRepository } from "@factory/database"
+import { Database, DiscoveryRepository, KeywordRepository, SitemapRepository, SteamRepository } from "@factory/database"
 import type { SignalSourceType, SourceTarget } from "@factory/shared"
 
 const port = Number(process.env.API_PORT ?? "8787")
@@ -56,6 +56,7 @@ const server = createServer(async (request, response) => {
   const db = new Database()
   const sitemap = new SitemapRepository(db)
   const discovery = new DiscoveryRepository(db)
+  const keyword = new KeywordRepository(db)
   const steam = new SteamRepository(db)
 
   try {
@@ -67,6 +68,15 @@ const server = createServer(async (request, response) => {
         discovery.countEnabledTargets()
       ])
       return sendJson(response, 200, { candidates, enabledTargetCount })
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/discovery/keywords") {
+      const range = url.searchParams.get("range")
+      const sourceType = (url.searchParams.get("sourceType") || undefined) as SignalSourceType | undefined
+      const status = url.searchParams.get("status") || undefined
+      return sendJson(response, 200, {
+        keywords: await keyword.listKeywords(sinceForRange(range), { sourceType, status })
+      })
     }
 
     if (request.method === "GET" && url.pathname === "/api/steam/games") {
