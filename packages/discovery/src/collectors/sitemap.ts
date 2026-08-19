@@ -18,6 +18,13 @@ function matchesFilters(url: string, includes: string[], excludes: string[]): bo
   return true
 }
 
+function sameRoots(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const a = [...left].sort()
+  const b = [...right].sort()
+  return a.every((value, index) => value === b[index])
+}
+
 function htmlText(value: string): string {
   return value
     .replace(/<[^>]+>/g, " ")
@@ -73,8 +80,17 @@ export const sitemapCollector: Collector = {
     const includes = configStringArray(target.config, "urlIncludes")
     const excludes = configStringArray(target.config, "urlExcludes")
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
+    const baselineOnRootChange = configBoolean(target.config, "baselineOnRootChange", true)
     const fetchMetadata = configBoolean(target.config, "fetchPageMetadata", true)
     const curlFallback = configBoolean(target.config, "curlFallback", true)
+
+    const previousRoots = Array.isArray(cursor?.sitemapUrls)
+      ? cursor.sitemapUrls.filter((value): value is string => typeof value === "string")
+      : []
+    const rootChanged = cursor?.initialized === true
+      && previousRoots.length > 0
+      && !sameRoots(previousRoots, roots)
+    const suppressNewForRootChange = rootChanged && baselineOnRootChange
 
     const collection = await collectSitemap(roots, context.fetch, {
       userAgent,
@@ -99,7 +115,8 @@ export const sitemapCollector: Collector = {
         entries,
         context.now,
         baselineOnFirstRun,
-        maxNewUrls
+        maxNewUrls,
+        suppressNewForRootChange
       )
       initialized = reconciled.initialized
       newUrls = reconciled.pendingUrls
@@ -110,7 +127,8 @@ export const sitemapCollector: Collector = {
           ? cursor.seenUrls.filter((url): url is string => typeof url === "string")
           : []
       )
-      const allNew = !initialized && baselineOnFirstRun
+      const shouldBaseline = (!initialized && baselineOnFirstRun) || suppressNewForRootChange
+      const allNew = shouldBaseline
         ? []
         : urls.filter((url) => !previous.has(url))
       newUrls = allNew.slice(0, maxNewUrls)
@@ -149,11 +167,12 @@ export const sitemapCollector: Collector = {
           sitemapCount: collection.sitemapCount,
           discoveredUrlCount: collection.urls.length,
           urlCount: urls.length,
-          pendingNewUrls: Math.max(0, pendingCount - newUrls.length)
+          pendingNewUrls: Math.max(0, pendingCount - newUrls.length),
+          ...(suppressNewForRootChange ? { rootChangeBaselinedAt: context.now.toISOString() } : {})
         }
       : {
           initialized: true,
-          seenUrls: !initialized && baselineOnFirstRun
+          seenUrls: ((!initialized && baselineOnFirstRun) || suppressNewForRootChange)
             ? urls
             : [...new Set([
                 ...(Array.isArray(cursor?.seenUrls) ? cursor.seenUrls.filter((url): url is string => typeof url === "string") : []),
@@ -164,7 +183,8 @@ export const sitemapCollector: Collector = {
           sitemapCount: collection.sitemapCount,
           discoveredUrlCount: collection.urls.length,
           urlCount: urls.length,
-          pendingNewUrls: pendingCount
+          pendingNewUrls: pendingCount,
+          ...(suppressNewForRootChange ? { rootChangeBaselinedAt: context.now.toISOString() } : {})
         }
 
     return {
