@@ -5,13 +5,14 @@ import {
   getDashboardToken,
   setDashboardToken,
   type DiscoveryCandidate,
+  type KeywordCandidate,
   type SitemapAnomaly,
   type SitemapRun,
   type SitemapTarget,
   type SteamGame
 } from "./api"
 
-type Tab = "keywords" | "steam" | "sites" | "runs" | "anomalies"
+type Tab = "keywords" | "discover" | "steam" | "sites" | "runs" | "anomalies"
 const ranges = [
   { value: "1d", label: "最近 1 天" },
   { value: "7d", label: "最近 7 天" },
@@ -35,6 +36,10 @@ function statusLabel(status: SteamGame["storeStatus"]) {
   return "Unknown"
 }
 
+function keywordStatusLabel(status: KeywordCandidate["status"]) {
+  return status === "pending_validation" ? "待 Google 验证" : "低可搜性"
+}
+
 function targetRoots(target: SitemapTarget): string {
   const many = Array.isArray(target.config.sitemapUrls)
     ? target.config.sitemapUrls.filter((item): item is string => typeof item === "string")
@@ -47,8 +52,10 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("keywords")
   const [range, setRange] = useState("1d")
   const [sourceType, setSourceType] = useState("")
+  const [keywordStatus, setKeywordStatus] = useState("pending_validation")
   const [targets, setTargets] = useState<SitemapTarget[]>([])
   const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([])
+  const [keywords, setKeywords] = useState<KeywordCandidate[]>([])
   const [enabledTargetCount, setEnabledTargetCount] = useState(0)
   const [runs, setRuns] = useState<SitemapRun[]>([])
   const [anomalies, setAnomalies] = useState<SitemapAnomaly[]>([])
@@ -78,6 +85,14 @@ export default function App() {
     setEnabledTargetCount(result.enabledTargetCount)
   }
 
+  const refreshKeywords = async () => {
+    const result = await api.keywords(range, {
+      sourceType: sourceType || undefined,
+      status: keywordStatus || undefined
+    })
+    setKeywords(result.keywords)
+  }
+
   const refreshSteam = async () => {
     setSteamLoading(true)
     try {
@@ -98,7 +113,7 @@ export default function App() {
     setError("")
     setLoading(true)
     try {
-      await Promise.all([refreshCore(), refreshCandidates()])
+      await Promise.all([refreshCore(), refreshCandidates(), refreshKeywords()])
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -112,8 +127,9 @@ export default function App() {
 
   useEffect(() => {
     if (loading) return
-    void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [range, sourceType])
+    if (tab === "discover") void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    if (tab === "keywords") void refreshKeywords().catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }, [tab, range, sourceType, keywordStatus])
 
   useEffect(() => {
     if (tab !== "steam") return
@@ -128,6 +144,19 @@ export default function App() {
     }
     return seen.size
   }, [candidates])
+
+  const keywordSourceTypeCount = useMemo(() => {
+    const seen = new Set<string>()
+    for (const keyword of keywords) {
+      for (const item of keyword.sourceTypes) seen.add(item)
+    }
+    return seen.size
+  }, [keywords])
+
+  const averageKeywordScore = useMemo(() => {
+    if (keywords.length === 0) return 0
+    return Math.round(keywords.reduce((sum, item) => sum + item.searchabilityScore, 0) / keywords.length)
+  }, [keywords])
 
   const steamStats = useMemo(() => ({
     demos: steamGames.filter((game) => game.hasDemo).length,
@@ -195,10 +224,16 @@ export default function App() {
   }
 
   const pageTitle = tab === "keywords" ? "新增关键词"
-    : tab === "steam" ? "Steam 游戏"
-      : tab === "sites" ? "Sitemap 管理"
-        : tab === "runs" ? "运行记录"
-          : "异常中心"
+    : tab === "discover" ? "发现候选"
+      : tab === "steam" ? "Steam 游戏"
+        : tab === "sites" ? "Sitemap 管理"
+          : tab === "runs" ? "运行记录"
+            : "异常中心"
+
+  const eyebrow = tab === "keywords" ? "LAYER 2 / KEYWORDS"
+    : tab === "discover" ? "LAYER 1 / DISCOVERY"
+      : tab === "steam" ? "DISCOVERY / STEAM"
+        : "DISCOVERY / SITEMAP"
 
   return (
     <div className="shell">
@@ -206,6 +241,7 @@ export default function App() {
         <div className="brand"><span className="brand-mark">ASF</span><div><strong>Auto Site Factory</strong><small>Discovery</small></div></div>
         <nav>
           <button className={tab === "keywords" ? "active" : ""} onClick={() => setTab("keywords")}>新增关键词</button>
+          <button className={tab === "discover" ? "active" : ""} onClick={() => setTab("discover")}>发现候选</button>
           <button className={tab === "steam" ? "active" : ""} onClick={() => setTab("steam")}>Steam 游戏</button>
           <button className={tab === "sites" ? "active" : ""} onClick={() => setTab("sites")}>Sitemap 管理</button>
           <button className={tab === "runs" ? "active" : ""} onClick={() => setTab("runs")}>运行记录</button>
@@ -215,7 +251,7 @@ export default function App() {
 
       <main>
         <header>
-          <div><p className="eyebrow">{tab === "steam" ? "DISCOVERY / STEAM" : tab === "keywords" ? "DISCOVERY" : "DISCOVERY / SITEMAP"}</p><h1>{pageTitle}</h1></div>
+          <div><p className="eyebrow">{eyebrow}</p><h1>{pageTitle}</h1></div>
           <div className="header-actions">
             <div className="token-control">
               <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Dashboard token（如已配置）" />
@@ -230,6 +266,50 @@ export default function App() {
 
         {loading ? <div className="empty">加载中…</div> : tab === "keywords" ? (
           <section>
+            <div className="alert info">这里是从 Layer 1 实体生成的“可搜索词候选”。Searchability 是启发式评分，不代表 Google 搜索量；当前状态仍需 Google Suggest / Trends / SERP 的真实验证。</div>
+            <div className="toolbar">
+              <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
+              <div className="filter-row">
+                <select value={keywordStatus} onChange={(event) => setKeywordStatus(event.target.value)}>
+                  <option value="pending_validation">待 Google 验证</option>
+                  <option value="low_searchability">低可搜性</option>
+                  <option value="">全部状态</option>
+                </select>
+                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                  <option value="">全部来源</option>
+                  {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="stats">
+              <article><strong>{keywords.length}</strong><span>当前关键词候选</span></article>
+              <article><strong>{averageKeywordScore}</strong><span>平均 Searchability</span></article>
+              <article><strong>{keywordSourceTypeCount}</strong><span>来源类型</span></article>
+            </div>
+            <div className="card table-card">
+              <table>
+                <thead><tr><th>关键词候选</th><th>Searchability</th><th>状态</th><th>来源实体</th><th>类型 / Scope</th><th>来源</th><th>首次发现</th><th></th></tr></thead>
+                <tbody>
+                  {keywords.map((keyword) => (
+                    <tr key={keyword.id}>
+                      <td><strong>{keyword.keyword}</strong><small className="muted">{keyword.generationKind === "scope_context" ? "已补主题上下文" : "实体名清洗"}</small></td>
+                      <td><span className={`score score-${keyword.searchabilityScore >= 75 ? "high" : keyword.searchabilityScore >= 55 ? "mid" : "low"}`}>{keyword.searchabilityScore}</span></td>
+                      <td><span className={`status ${keyword.status === "pending_validation" ? "running" : "failed"}`}>{keywordStatusLabel(keyword.status)}</span></td>
+                      <td>{keyword.entityName === keyword.keyword ? "—" : keyword.entityName}</td>
+                      <td>{keyword.entityType}<small className="muted">{keyword.scope}</small></td>
+                      <td>{keyword.sourceTypes.join(", ")}</td>
+                      <td>{formatTime(keyword.firstSeenAt)}</td>
+                      <td><a className="trend" href={`https://trends.google.com/trends/explore?date=today%205-y&q=${encodeURIComponent(keyword.keyword)}`} target="_blank" rel="noreferrer">Trends ↗</a></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {keywords.length === 0 && <div className="empty">还没有符合当前条件的关键词候选。下一次 Discovery Cron 会自动生成和回填。</div>}
+            </div>
+          </section>
+        ) : tab === "discover" ? (
+          <section>
+            <div className="alert info">这里展示 Layer 1 原始实体，目标是高召回。它们不是 Google 关键词，因此不会直接拿实体名做搜索量结论。</div>
             <div className="toolbar">
               <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
               <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
@@ -238,23 +318,13 @@ export default function App() {
               </select>
             </div>
             <div className="stats">
-              <article><strong>{candidates.length}</strong><span>新增候选</span></article>
+              <article><strong>{candidates.length}</strong><span>实体候选</span></article>
               <article><strong>{sourceTypeCount}</strong><span>来源类型</span></article>
               <article><strong>{enabledTargetCount}</strong><span>启用源</span></article>
             </div>
             <div className="card table-card">
               <table>
-                <thead>
-                  <tr>
-                    <th>候选词</th>
-                    <th>类型</th>
-                    <th>Scope</th>
-                    <th>来源</th>
-                    <th>提及</th>
-                    <th>首次发现</th>
-                    <th></th>
-                  </tr>
-                </thead>
+                <thead><tr><th>实体</th><th>类型</th><th>Scope</th><th>来源</th><th>提及</th><th>首次发现</th></tr></thead>
                 <tbody>
                   {candidates.map((candidate) => (
                     <tr key={candidate.id}>
@@ -264,21 +334,11 @@ export default function App() {
                       <td>{candidate.sourceTypes.join(", ")}</td>
                       <td>{candidate.mentionCount}</td>
                       <td>{formatTime(candidate.firstSeenAt)}</td>
-                      <td>
-                        <a
-                          className="trend"
-                          href={`https://trends.google.com/trends/explore?date=today%205-y&q=${encodeURIComponent(candidate.name)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Trends ↗
-                        </a>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {candidates.length === 0 && <div className="empty">这个时间范围还没有新的 Discovery 候选</div>}
+              {candidates.length === 0 && <div className="empty">这个时间范围还没有新的 Discovery 实体</div>}
             </div>
           </section>
         ) : tab === "steam" ? (
