@@ -11,7 +11,7 @@ on:
       - "migrations/003_steam_lifecycle.sql"
   schedule:
     # GitHub cron is UTC. Offset from the top of the hour to reduce scheduler contention.
-    - cron: "37 */3 * * *"
+    - cron: "37 * * * *"
 
 concurrency:
   group: steam-lifecycle-monitor
@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 45
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
       STEAM_STORE_CHECK_LIMIT: "200"
       STEAM_CCU_CHECK_LIMIT: "300"
 
@@ -33,10 +34,14 @@ jobs:
         with:
           node-version: 22
 
-      - name: Require database
+      - name: Require secrets
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+          if [ -z "$STEAM_WEB_API_KEY" ]; then
+            echo "Missing required GitHub Actions secret: STEAM_WEB_API_KEY"
             exit 1
           fi
 
