@@ -40,7 +40,9 @@ export function humanizeEntityName(value: string): string {
 }
 
 function normalizeKeyword(value: string): string {
-  return value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()
+  const unicode = value.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim()
+  const ascii = unicode.replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()
+  return ascii || unicode
 }
 
 function hasScopePrefix(keyword: string, scope: string): boolean {
