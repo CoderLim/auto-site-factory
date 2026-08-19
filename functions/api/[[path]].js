@@ -1,5 +1,5 @@
 import { Client } from "pg"
-import { DiscoveryRepository, SitemapRepository, SteamRepository } from "@factory/database"
+import { DiscoveryRepository, KeywordRepository, SitemapRepository, SteamRepository } from "@factory/database"
 
 const DEFAULT_REPOSITORY = "CoderLim/auto-site-factory"
 const DEFAULT_WORKFLOW = "discovery-cron.yml"
@@ -37,6 +37,7 @@ async function withRepos(env, callback) {
     return await callback({
       sitemap: new SitemapRepository(database),
       discovery: new DiscoveryRepository(database),
+      keyword: new KeywordRepository(database),
       steam: new SteamRepository(database)
     })
   } finally {
@@ -95,6 +96,15 @@ export async function onRequest(context) {
         ])
         return json({ candidates, enabledTargetCount })
       })
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/discovery/keywords") {
+      const range = url.searchParams.get("range")
+      const sourceType = url.searchParams.get("sourceType") || undefined
+      const status = url.searchParams.get("status") || undefined
+      return await withRepos(env, async ({ keyword }) => json({
+        keywords: await keyword.listKeywords(sinceForRange(range), { sourceType, status })
+      }))
     }
 
     if (request.method === "GET" && url.pathname === "/api/steam/games") {
