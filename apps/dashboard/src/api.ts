@@ -24,6 +24,24 @@ export type DiscoveryCandidate = {
   lastSeenAt: string
 }
 
+export type KeywordCandidate = {
+  id: string
+  entityId: string
+  keyword: string
+  normalizedKeyword: string
+  status: "pending_validation" | "low_searchability"
+  searchabilityScore: number
+  generationKind: "entity_name" | "scope_context"
+  generationReasons: string[]
+  firstSeenAt: string
+  lastSeenAt: string
+  entityName: string
+  entityType: string
+  scope: string
+  sourceTypes: string[]
+  mentionCount: number
+}
+
 export type SteamGame = {
   appid: number
   name: string
@@ -118,6 +136,12 @@ export const api = {
     return request<{ candidates: DiscoveryCandidate[]; enabledTargetCount: number }>(
       `/api/discovery/candidates?${params}`
     )
+  },
+  keywords: (range: string, options: { sourceType?: string; status?: string } = {}) => {
+    const params = new URLSearchParams({ range })
+    if (options.sourceType) params.set("sourceType", options.sourceType)
+    if (options.status) params.set("status", options.status)
+    return request<{ keywords: KeywordCandidate[] }>(`/api/discovery/keywords?${params}`)
   },
   steamGames: (options: { range: string; status?: string; minCcu?: string; sort?: string; includeBaseline?: boolean }) => {
     const params = new URLSearchParams({ range: options.range })
