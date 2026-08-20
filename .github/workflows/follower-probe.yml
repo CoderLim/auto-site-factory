@@ -35,7 +35,9 @@ jobs:
           }
 
           const number = (value) => value ? Number(value.replaceAll(',', '')) : null
-          const memberCountFromXml = (text) => number(text.match(/<memberCount>([\d,]+)<\/memberCount>/i)?.[1])
+          const memberCountsFromXml = (text) => [...text.matchAll(/<memberCount>([\d,]+)<\/memberCount>/gi)]
+            .map((match) => number(match[1]))
+          const xmlStat = (text, tag) => number(text.match(new RegExp(`<${tag}>([\\d,]+)</${tag}>`, 'i'))?.[1])
           const memberCountFromHtml = (text) => {
             for (const pattern of [
               /1\s*-\s*\d+\s+of\s+([\d,]+)\s+Members/i,
@@ -49,11 +51,10 @@ jobs:
           }
 
           const groupIdFromHtml = (text) => {
-            const patterns = [
+            for (const pattern of [
               /OpenGroupChat\(\s*['"](\d+)['"]\s*\)/i,
               /steamid[_-]?group[^\d]{0,30}(\d{16,20})/i,
-            ]
-            for (const pattern of patterns) {
+            ]) {
               const value = text.match(pattern)?.[1]
               if (value) return value
             }
@@ -64,36 +65,33 @@ jobs:
             console.log(`\n=== ${appid} ${name} ===`)
             const app = await get(`https://steamcommunity.com/app/${appid}/`)
             const groupId64 = groupIdFromHtml(app.text)
-            console.log(JSON.stringify({
-              surface: 'app', status: app.status, finalUrl: app.url,
-              groupId64, htmlMemberCount: memberCountFromHtml(app.text), bytes: app.text.length
-            }))
+            console.log(JSON.stringify({ surface: 'app', status: app.status, finalUrl: app.url, groupId64, bytes: app.text.length }))
 
             for (const surface of [
               `https://steamcommunity.com/games/${appid}/members`,
               `https://steamcommunity.com/ogg/${appid}/members`,
             ]) {
               const page = await get(surface)
-              console.log(JSON.stringify({
-                surface, status: page.status, finalUrl: page.url,
-                groupId64: groupIdFromHtml(page.text),
-                htmlMemberCount: memberCountFromHtml(page.text), bytes: page.text.length
-              }))
+              console.log(JSON.stringify({ surface, status: page.status, finalUrl: page.url, htmlMemberCount: memberCountFromHtml(page.text), bytes: page.text.length }))
             }
 
             if (groupId64) {
               const gidPage = await get(`https://steamcommunity.com/gid/${groupId64}/members`)
-              console.log(JSON.stringify({
-                surface: 'gid-members', status: gidPage.status, finalUrl: gidPage.url,
-                htmlMemberCount: memberCountFromHtml(gidPage.text), bytes: gidPage.text.length
-              }))
+              console.log(JSON.stringify({ surface: 'gid-members', status: gidPage.status, finalUrl: gidPage.url, htmlMemberCount: memberCountFromHtml(gidPage.text), bytes: gidPage.text.length }))
 
               const xml = await get(`https://steamcommunity.com/gid/${groupId64}/memberslistxml/?xml=1`)
-              const firstTags = [...xml.text.matchAll(/<([A-Za-z][A-Za-z0-9_]*)>/g)]
-                .slice(0, 20).map((match) => match[1])
+              const counts = memberCountsFromXml(xml.text)
+              const compactPrefix = xml.text.slice(0, 5000).replace(/\s+/g, ' ').slice(0, 1500)
               console.log(JSON.stringify({
                 surface: 'gid-members-xml', status: xml.status, finalUrl: xml.url,
-                xmlMemberCount: memberCountFromXml(xml.text), bytes: xml.text.length, firstTags
+                memberCounts: counts,
+                membersInChat: xmlStat(xml.text, 'membersInChat'),
+                membersInGame: xmlStat(xml.text, 'membersInGame'),
+                membersOnline: xmlStat(xml.text, 'membersOnline'),
+                totalPages: xmlStat(xml.text, 'totalPages'),
+                currentPage: xmlStat(xml.text, 'currentPage'),
+                bytes: xml.text.length,
+                prefix: compactPrefix
               }))
             }
           }
