@@ -10,65 +10,55 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Validate follower coverage on recent Coming Soon games
+      - name: Validate follower coverage with Community fallback
         shell: bash
         run: |
           node <<'NODE'
-          const apps = [
-            [4530170, 'Run, Ronald, Run'],
-            [4980030, 'PENCILS DOWN'],
-            [4825380, 'Grass Cutter 9000: Directors Cut'],
-            [4895250, 'Stellar Affinity'],
-            [4968280, 'Building No. 7'],
-            [5069500, '斩爆甜点'],
-            [5053020, 'Mosaic Melt'],
-            [5057400, 'ColonyZero'],
-            [5075190, 'Vangrid'],
-            [5086560, 'Tank Battle Classic'],
-            [5107070, 'Dicey Darlings'],
-            [5098180, 'the Kingdom Fallen'],
-            [5098820, 'Cute Kitty WAR'],
-            [5084590, 'Starry Night Tea Party'],
-            [4892530, 'Project Longshot'],
-            [4919760, 'Ink Rush'],
-            [4880390, 'Clash of Lands'],
-            [3893290, 'Stray Dog: nobody cares'],
-            [4631870, 'My Windowsill Garden'],
-            [4980520, 'The Great Picture'],
-            [5000500, '少女三国志'],
-            [5029170, 'RAT TAG!'],
-            [5043190, 'Silent Tracks'],
-            [5044730, 'The woods'],
-            [5064290, 'No More Pain'],
-            [5094050, 'Ridge Hold'],
-            [5090120, 'NICO DRAW'],
-            [5106690, 'Hundred Fires: OPEN VECTOR — Episode 1'],
-            [5109640, 'Gas Station Horror'],
-            [5110200, 'La Bidouillerie'],
-          ]
-
-          const parseFollowers = (html) => {
+          const apps = [4530170,4980030,4825380,4895250,4968280,5069500,5053020,5057400,5075190,5086560,5107070,5098180,5098820,5084590,4892530,4919760,4880390,3893290,4631870,4980520,5000500,5029170,5043190,5044730,5064290,5094050,5090120,5106690,5109640,5110200]
+          const headers = { 'user-agent': 'Mozilla/5.0 (compatible; auto-site-factory-follower-probe/0.1)' }
+          const get = async (url) => {
+            const response = await fetch(url, { headers, redirect: 'follow' })
+            return { response, text: await response.text() }
+          }
+          const parseStore = (html) => {
             const match = html.match(/class=["'][^"']*num_followers[^"']*["'][^>]*>\s*([\d,]+)\s*</i)
             if (!match?.[1]) return null
             const value = Number(match[1].replaceAll(',', ''))
             return Number.isFinite(value) && value >= 0 ? value : null
           }
+          const groupIdFromHtml = (html) => html.match(/OpenGroupChat\(\s*['"](\d+)['"]\s*\)/i)?.[1]
+            ?? html.match(/steamid[_-]?group[^\d]{0,30}(\d{16,20})/i)?.[1]
+            ?? null
+          const parseOuterXmlCount = (xml) => {
+            const values = [...xml.matchAll(/<memberCount>([\d,]+)<\/memberCount>/gi)]
+              .map((match) => Number(match[1].replaceAll(',', '')))
+              .filter(Number.isFinite)
+            return values.at(-1) ?? null
+          }
 
-          let ok = 0
+          let storeOk = 0
+          let fallbackOk = 0
           let missing = 0
-          for (const [appid, name] of apps) {
-            const url = `https://store.steampowered.com/dlc/${appid}/?l=english&cc=us`
-            const response = await fetch(url, {
-              headers: { 'user-agent': 'Mozilla/5.0 (compatible; auto-site-factory-follower-probe/0.1)' },
-              redirect: 'follow'
-            })
-            const html = await response.text()
-            const followers = parseFollowers(html)
+          for (const appid of apps) {
+            const store = await get(`https://store.steampowered.com/dlc/${appid}/?l=english&cc=us`)
+            let followers = parseStore(store.text)
+            let source = 'store_dlc'
+            if (followers == null) {
+              const community = await get(`https://steamcommunity.com/app/${appid}/`)
+              const gid = groupIdFromHtml(community.text)
+              if (gid) {
+                const xml = await get(`https://steamcommunity.com/gid/${gid}/memberslistxml/?xml=1`)
+                followers = parseOuterXmlCount(xml.text)
+                source = 'community_xml'
+              }
+            }
             if (followers == null) missing += 1
-            else ok += 1
-            console.log(JSON.stringify({ appid, name, status: response.status, followers, bytes: html.length }))
+            else if (source === 'store_dlc') storeOk += 1
+            else fallbackOk += 1
+            console.log(JSON.stringify({ appid, followers, source: followers == null ? null : source }))
             await new Promise((resolve) => setTimeout(resolve, 100))
           }
-          console.log(JSON.stringify({ total: apps.length, ok, missing, coveragePct: Math.round(ok / apps.length * 1000) / 10 }))
-          if (ok / apps.length < 0.9) process.exitCode = 2
+          const ok = storeOk + fallbackOk
+          console.log(JSON.stringify({ total: apps.length, ok, storeOk, fallbackOk, missing, coveragePct: Math.round(ok / apps.length * 1000) / 10 }))
+          if (ok / apps.length < 0.95) process.exitCode = 2
           NODE
