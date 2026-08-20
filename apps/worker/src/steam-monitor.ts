@@ -3,6 +3,7 @@ import {
   SteamRepository,
   type SteamAppListItem,
   type SteamCcuSample,
+  type SteamFollowerSample,
   type SteamGameSummary,
   type SteamStoreDetails
 } from "@factory/database"
@@ -12,7 +13,9 @@ const LEGACY_MIRROR_STATE_KEY = "steam_games_mirror_v1"
 const DEFAULT_APP_LIST_URL = "https://api.steampowered.com/IStoreService/GetAppList/v1/"
 const DEFAULT_FIRST_SYNC_LOOKBACK_SECONDS = 7 * 24 * 60 * 60
 const STORE_CHECK_LIMIT = Number(process.env.STEAM_STORE_CHECK_LIMIT ?? "200")
+const FOLLOWER_CHECK_LIMIT = Number(process.env.STEAM_FOLLOWER_CHECK_LIMIT ?? "300")
 const CCU_CHECK_LIMIT = Number(process.env.STEAM_CCU_CHECK_LIMIT ?? "300")
+const USER_AGENT = "auto-site-factory/0.1"
 
 interface AppListState {
   initializedAt?: string
@@ -109,7 +112,7 @@ async function fetchAppListPage(options: {
   if (options.ifModifiedSince != null) url.searchParams.set("if_modified_since", String(options.ifModifiedSince))
   if (options.lastAppid != null) url.searchParams.set("last_appid", String(options.lastAppid))
 
-  const response = await fetch(url, { headers: { "user-agent": "auto-site-factory/0.1" } })
+  const response = await fetch(url, { headers: { "user-agent": USER_AGENT } })
   if (!response.ok) {
     const body = (await response.text()).slice(0, 500)
     throw new Error(`Steam IStoreService/GetAppList failed (${response.status}): ${body}`)
@@ -182,7 +185,6 @@ async function syncAppList(repository: SteamRepository): Promise<void> {
   await repository.setState(APP_LIST_STATE_KEY, {
     initializedAt: state?.initializedAt ?? new Date().toISOString(),
     lastSyncAt: new Date().toISOString(),
-    // Re-read a small overlap on the next run so a change landing on the boundary is not missed.
     ifModifiedSince: Math.max(0, syncStartedAt - 60)
   } satisfies AppListState)
 
@@ -214,7 +216,7 @@ async function fetchStoreDetails(game: SteamGameSummary): Promise<SteamStoreDeta
   appDetailsUrl.searchParams.set("cc", "us")
   appDetailsUrl.searchParams.set("l", "english")
 
-  const response = await fetch(appDetailsUrl, { headers: { "user-agent": "auto-site-factory/0.1" } })
+  const response = await fetch(appDetailsUrl, { headers: { "user-agent": USER_AGENT } })
   if (!response.ok) throw new Error(`Steam appdetails ${game.appid} failed (${response.status})`)
   const payload = await response.json() as Record<string, SteamAppDetailsResponse>
   const entry = payload[String(game.appid)]
@@ -247,7 +249,7 @@ async function fetchStoreDetails(game: SteamGameSummary): Promise<SteamStoreDeta
 
   let playtest = { hasPlaytest: false } as { hasPlaytest: boolean; playtestAppid?: number }
   try {
-    const page = await fetch(`${storeUrl}?l=english&cc=us`, { headers: { "user-agent": "auto-site-factory/0.1" } })
+    const page = await fetch(`${storeUrl}?l=english&cc=us`, { headers: { "user-agent": USER_AGENT } })
     if (page.ok) playtest = detectPlaytest(await page.text(), game.appid)
   } catch (error) {
     console.warn(`[steam] playtest page check failed appid=${game.appid}`, error)
@@ -288,10 +290,82 @@ async function refreshStoreMetadata(repository: SteamRepository): Promise<void> 
   console.log(`[steam] store metadata checked=${games.length} success=${success} failed=${failed}`)
 }
 
+function parseFollowersFromStore(html: string): number | undefined {
+  const match = html.match(/class=["'][^"']*num_followers[^"']*["'][^>]*>\s*([\d,]+)\s*</i)
+  if (!match?.[1]) return undefined
+  const value = Number(match[1].replaceAll(",", ""))
+  return Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function parseCommunityGroupId(html: string): string | undefined {
+  return html.match(/OpenGroupChat\(\s*['"](\d+)['"]\s*\)/i)?.[1]
+    ?? html.match(/steamid[_-]?group[^\d]{0,30}(\d{16,20})/i)?.[1]
+}
+
+function parseFollowersFromCommunityXml(xml: string): number | undefined {
+  const values = [...xml.matchAll(/<memberCount>([\d,]+)<\/memberCount>/gi)]
+    .map((match) => Number(match[1]?.replaceAll(",", "")))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+  return values.at(-1)
+}
+
+async function fetchFollowers(appid: number): Promise<SteamFollowerSample | undefined> {
+  const dlcUrl = `https://store.steampowered.com/dlc/${appid}/?l=english&cc=us`
+  const dlcPage = await fetch(dlcUrl, { headers: { "user-agent": USER_AGENT }, redirect: "follow" })
+  if (dlcPage.ok) {
+    const followers = parseFollowersFromStore(await dlcPage.text())
+    if (followers != null) return { followers, source: "store_dlc" }
+  }
+
+  const communityPage = await fetch(`https://steamcommunity.com/app/${appid}/`, {
+    headers: { "user-agent": USER_AGENT },
+    redirect: "follow"
+  })
+  if (!communityPage.ok) return undefined
+  const groupId = parseCommunityGroupId(await communityPage.text())
+  if (!groupId) return undefined
+
+  const xmlPage = await fetch(`https://steamcommunity.com/gid/${groupId}/memberslistxml/?xml=1`, {
+    headers: { "user-agent": USER_AGENT },
+    redirect: "follow"
+  })
+  if (!xmlPage.ok) return undefined
+  const followers = parseFollowersFromCommunityXml(await xmlPage.text())
+  return followers == null ? undefined : { followers, source: "community_xml" }
+}
+
+async function refreshFollowers(repository: SteamRepository): Promise<void> {
+  const games = await repository.listForFollowerCheck(FOLLOWER_CHECK_LIMIT)
+  let sampled = 0
+  let store = 0
+  let fallback = 0
+  let missing = 0
+
+  await mapLimit(games, 5, async (game) => {
+    try {
+      const sample = await fetchFollowers(game.appid)
+      await repository.recordFollowers(game.appid, sample)
+      if (!sample) missing += 1
+      else {
+        sampled += 1
+        if (sample.source === "store_dlc") store += 1
+        else fallback += 1
+      }
+      await sleep(100)
+    } catch (error) {
+      missing += 1
+      await repository.recordFollowers(game.appid)
+      console.warn(`[steam] follower check failed appid=${game.appid}`, error)
+    }
+  })
+
+  console.log(`[steam] followers games=${games.length} sampled=${sampled} store=${store} fallback=${fallback} missing=${missing}`)
+}
+
 async function fetchCcu(appid: number): Promise<number | undefined> {
   const url = new URL("https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/")
   url.searchParams.set("appid", String(appid))
-  const response = await fetch(url, { headers: { "user-agent": "auto-site-factory/0.1" } })
+  const response = await fetch(url, { headers: { "user-agent": USER_AGENT } })
   if (!response.ok) return undefined
   const payload = await response.json() as { response?: { player_count?: number; result?: number } }
   const value = payload.response?.player_count
@@ -330,6 +404,7 @@ export async function runSteamMonitorOnce(): Promise<void> {
   try {
     await syncAppList(repository)
     await refreshStoreMetadata(repository)
+    await refreshFollowers(repository)
     await refreshCcu(repository)
   } finally {
     await db.close()
