@@ -29,6 +29,11 @@ function formatNumber(value?: number) {
   return value == null ? "—" : value.toLocaleString()
 }
 
+function formatDelta(value?: number) {
+  if (value == null) return "—"
+  return `${value > 0 ? "+" : ""}${value.toLocaleString()}`
+}
+
 function statusLabel(status: SteamGame["storeStatus"]) {
   if (status === "coming_soon") return "Coming Soon"
   if (status === "released") return "Released"
@@ -397,8 +402,10 @@ export default function App() {
                 </select>
                 <select value={steamSort} onChange={(event) => setSteamSort(event.target.value)}>
                   <option value="recent">按首次发现</option>
+                  <option value="followers">按 Followers</option>
+                  <option value="follower_growth">按 7d +Followers</option>
                   <option value="ccu">按 CCU</option>
-                  <option value="growth">按 24h 增长</option>
+                  <option value="growth">按 CCU 24h 增长</option>
                 </select>
                 <label className="check"><input type="checkbox" checked={includeBaseline} onChange={(event) => setIncludeBaseline(event.target.checked)} />包含初始化基线</label>
                 <button className="copy-keywords" onClick={() => void copyKeywords(steamGames.map((game) => game.name))} disabled={steamGames.length === 0 || steamLoading}>复制关键词</button>
@@ -411,7 +418,7 @@ export default function App() {
             </div>
             <div className="card table-card">
               <table>
-                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>24h 增长</th><th>Release</th></tr></thead>
+                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>Followers</th><th>24h +F</th><th>7d +F</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>CCU 24h 增长</th><th>Release</th></tr></thead>
                 <tbody>
                   {steamGames.map((game) => (
                     <tr key={game.appid}>
@@ -423,6 +430,9 @@ export default function App() {
                       <td><span className={`status steam-${game.storeStatus}`}>{statusLabel(game.storeStatus)}</span></td>
                       <td>{game.hasDemo ? (game.demoAppid ? <a href={`https://store.steampowered.com/app/${game.demoAppid}/`} target="_blank" rel="noreferrer">Yes ↗</a> : "Yes") : "—"}</td>
                       <td>{game.hasPlaytest ? (game.playtestAppid ? <a href={`https://store.steampowered.com/app/${game.playtestAppid}/`} target="_blank" rel="noreferrer">Yes ↗</a> : "Yes") : "—"}</td>
+                      <td><strong>{formatNumber(game.followersCurrent)}</strong>{game.followersSource && <small className="muted">{game.followersSource === "store_dlc" ? "store" : "community"}</small>}</td>
+                      <td className={(game.followers24hDelta ?? 0) > 0 ? "positive" : (game.followers24hDelta ?? 0) < 0 ? "negative" : ""}>{formatDelta(game.followers24hDelta)}</td>
+                      <td className={(game.followers7dDelta ?? 0) > 0 ? "positive" : (game.followers7dDelta ?? 0) < 0 ? "negative" : ""}>{formatDelta(game.followers7dDelta)}{game.followers7dGrowthPct != null && <small className="muted">{game.followers7dGrowthPct > 0 ? "+" : ""}{game.followers7dGrowthPct}%</small>}</td>
                       <td><strong>{formatNumber(game.ccuCurrent)}</strong>{game.ccuSource && <small className="muted">{game.ccuSource}</small>}</td>
                       <td>{formatNumber(game.ccu24hPeak)}</td>
                       <td>{formatNumber(game.ccu7dPeak)}</td>
