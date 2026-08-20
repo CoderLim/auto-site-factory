@@ -1,0 +1,225 @@
+name: Apply follower sparkline
+
+on:
+  push:
+    branches: ["feat/follower-sparkline"]
+    paths:
+      - ".github/workflows/apply-follower-sparkline.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/follower-sparkline
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply follower trend UI
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          repo = Path("packages/database/src/steam-repository.ts")
+          text = repo.read_text()
+          text = replace_once(text,
+          '''export interface SteamFollowerSample {
+            followers: number
+            source: SteamFollowerSource
+          }
+          ''',
+          '''export interface SteamFollowerSample {
+            followers: number
+            source: SteamFollowerSource
+          }
+
+          export interface SteamFollowerTrendPoint {
+            recordedAt: string
+            followers: number
+          }
+          ''', "trend interface")
+          text = replace_once(text,
+          '''  followers24hDelta?: number
+            followers7dDelta?: number
+            followers7dGrowthPct?: number
+            ccuSource?: SteamCcuSource
+          ''',
+          '''  followers24hDelta?: number
+            followers7dDelta?: number
+            followers7dGrowthPct?: number
+            followersTrend: SteamFollowerTrendPoint[]
+            ccuSource?: SteamCcuSource
+          ''', "summary trend field")
+          text = replace_once(text,
+          '''function optionalNumber(value: unknown): number | undefined {
+            if (value == null) return undefined
+            const parsed = Number(value)
+            return Number.isFinite(parsed) ? parsed : undefined
+          }
+          ''',
+          '''function optionalNumber(value: unknown): number | undefined {
+            if (value == null) return undefined
+            const parsed = Number(value)
+            return Number.isFinite(parsed) ? parsed : undefined
+          }
+
+          function parseFollowerTrend(value: unknown): SteamFollowerTrendPoint[] {
+            if (!Array.isArray(value)) return []
+            return value.flatMap((point) => {
+              if (!point || typeof point !== "object") return []
+              const item = point as Record<string, unknown>
+              const followers = Number(item.followers)
+              const recordedAt = item.recordedAt == null ? "" : String(item.recordedAt)
+              if (!Number.isFinite(followers) || followers < 0 || !recordedAt) return []
+              return [{ followers, recordedAt }]
+            })
+          }
+          ''', "trend parser")
+          text = replace_once(text,
+          '''    followers24hDelta: optionalNumber(row.followers_24h_delta),
+              followers7dDelta: optionalNumber(row.followers_7d_delta),
+              followers7dGrowthPct: optionalNumber(row.followers_7d_growth_pct),
+              ccuSource: optionalString(row.ccu_source) as SteamCcuSource | undefined,
+          ''',
+          '''    followers24hDelta: optionalNumber(row.followers_24h_delta),
+              followers7dDelta: optionalNumber(row.followers_7d_delta),
+              followers7dGrowthPct: optionalNumber(row.followers_7d_growth_pct),
+              followersTrend: parseFollowerTrend(row.follower_trend),
+              ccuSource: optionalString(row.ccu_source) as SteamCcuSource | undefined,
+          ''', "toGame trend")
+          text = replace_once(text,
+          '''      `SELECT
+                 g.*,
+                 CASE
+          ''',
+          '''      `SELECT
+                 g.*,
+                 COALESCE(follower_trend.points, '[]'::jsonb) AS follower_trend,
+                 CASE
+          ''', "select trend")
+          text = replace_once(text,
+          '''       ) follower_7d ON TRUE
+               ${where}
+          ''',
+          '''       ) follower_7d ON TRUE
+               LEFT JOIN LATERAL (
+                 SELECT jsonb_agg(
+                   jsonb_build_object('recordedAt', s.recorded_at, 'followers', s.followers)
+                   ORDER BY s.recorded_at
+                 ) AS points
+                 FROM steam_follower_snapshots s
+                 WHERE s.appid = g.appid
+                   AND s.recorded_at >= NOW() - INTERVAL '7 days'
+               ) follower_trend ON TRUE
+               ${where}
+          ''', "trend lateral")
+          repo.write_text(text)
+
+          api = Path("apps/dashboard/src/api.ts")
+          text = api.read_text()
+          text = replace_once(text,
+          '''  followers24hDelta?: number
+            followers7dDelta?: number
+            followers7dGrowthPct?: number
+            ccuSource?: "game" | "demo" | "playtest"
+          ''',
+          '''  followers24hDelta?: number
+            followers7dDelta?: number
+            followers7dGrowthPct?: number
+            followersTrend: Array<{ recordedAt: string; followers: number }>
+            ccuSource?: "game" | "demo" | "playtest"
+          ''', "dashboard trend type")
+          api.write_text(text)
+
+          app = Path("apps/dashboard/src/App.tsx")
+          text = app.read_text()
+          text = replace_once(text,
+          '''function formatDelta(value?: number) {
+            if (value == null) return "—"
+            return `${value > 0 ? "+" : ""}${value.toLocaleString()}`
+          }
+          ''',
+          '''function formatDelta(value?: number) {
+            if (value == null) return "—"
+            return `${value > 0 ? "+" : ""}${value.toLocaleString()}`
+          }
+
+          function FollowerSparkline({ points }: { points: SteamGame["followersTrend"] }) {
+            if (!points || points.length < 2) return <span className="sparkline-empty">采样中</span>
+
+            const width = 132
+            const height = 38
+            const padding = 2
+            const times = points.map((point) => new Date(point.recordedAt).getTime())
+            const values = points.map((point) => point.followers)
+            const minTime = Math.min(...times)
+            const maxTime = Math.max(...times)
+            const minValue = Math.min(...values)
+            const maxValue = Math.max(...values)
+            const timeSpan = Math.max(1, maxTime - minTime)
+            const valueSpan = Math.max(1, maxValue - minValue)
+            const line = points.map((point, index) => {
+              const time = times[index] ?? minTime
+              const x = padding + ((time - minTime) / timeSpan) * (width - padding * 2)
+              const y = maxValue === minValue
+                ? height / 2
+                : padding + (1 - (point.followers - minValue) / valueSpan) * (height - padding * 2)
+              return `${x.toFixed(1)},${y.toFixed(1)}`
+            }).join(" ")
+            const first = values[0] ?? 0
+            const last = values.at(-1) ?? first
+            const delta = last - first
+
+            return (
+              <svg className="follower-sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`最近 7 天 Followers 走势，${formatDelta(delta)}`}>
+                <title>{`最近 ${points.length} 个采样点：${first.toLocaleString()} → ${last.toLocaleString()} (${formatDelta(delta)})`}</title>
+                <polyline points={line} />
+              </svg>
+            )
+          }
+          ''', "sparkline component")
+          text = replace_once(text,
+          '''                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>Followers</th><th>24h +F</th><th>7d +F</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>CCU 24h 增长</th><th>Release</th></tr></thead>
+          ''',
+          '''                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>Followers</th><th>Followers 7d 走势</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>CCU 24h 增长</th><th>Release</th></tr></thead>
+          ''', "steam table header")
+          text = replace_once(text,
+          '''                      <td className={(game.followers24hDelta ?? 0) > 0 ? "positive" : (game.followers24hDelta ?? 0) < 0 ? "negative" : ""}>{formatDelta(game.followers24hDelta)}</td>
+                                <td className={(game.followers7dDelta ?? 0) > 0 ? "positive" : (game.followers7dDelta ?? 0) < 0 ? "negative" : ""}>{formatDelta(game.followers7dDelta)}{game.followers7dGrowthPct != null && <small className="muted">{game.followers7dGrowthPct > 0 ? "+" : ""}{game.followers7dGrowthPct}%</small>}</td>
+          ''',
+          '''                      <td className="follower-trend-cell">
+                                  <FollowerSparkline points={game.followersTrend} />
+                                  <small className="follower-trend-meta">
+                                    <span className={(game.followers24hDelta ?? 0) > 0 ? "positive" : (game.followers24hDelta ?? 0) < 0 ? "negative" : ""}>24h {formatDelta(game.followers24hDelta)}</span>
+                                    <span className={(game.followers7dDelta ?? 0) > 0 ? "positive" : (game.followers7dDelta ?? 0) < 0 ? "negative" : ""}>7d {formatDelta(game.followers7dDelta)}</span>
+                                  </small>
+                                </td>
+          ''', "trend table cell")
+          app.write_text(text)
+
+          styles = Path("apps/dashboard/src/styles.css")
+          text = styles.read_text()
+          text += '''\n.follower-trend-cell{min-width:150px}.follower-sparkline{display:block;width:132px;height:38px;overflow:visible}.follower-sparkline polyline{fill:none;stroke:#84cc16;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}.follower-trend-meta{display:flex;gap:9px;margin-top:3px;color:#64748b;font-size:10px;font-weight:500;white-space:nowrap}.sparkline-empty{display:flex;width:132px;height:38px;align-items:center;justify-content:center;color:#94a3b8;font-size:11px;border-bottom:1px dashed #cbd5e1}\n'''
+          styles.write_text(text)
+          PY
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          rm .github/workflows/apply-follower-sparkline.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: show Steam follower sparkline"
+          git push origin HEAD:feat/follower-sparkline
