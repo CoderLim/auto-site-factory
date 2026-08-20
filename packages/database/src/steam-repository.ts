@@ -35,6 +35,11 @@ export interface SteamFollowerSample {
   source: SteamFollowerSource
 }
 
+export interface SteamFollowerTrendPoint {
+  recordedAt: string
+  followers: number
+}
+
 export interface SteamGameSummary {
   appid: number
   name: string
@@ -58,6 +63,7 @@ export interface SteamGameSummary {
   followers24hDelta?: number
   followers7dDelta?: number
   followers7dGrowthPct?: number
+  followersTrend: SteamFollowerTrendPoint[]
   ccuSource?: SteamCcuSource
   ccuAppid?: number
   ccuCurrent?: number
@@ -77,6 +83,18 @@ function optionalNumber(value: unknown): number | undefined {
   if (value == null) return undefined
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function parseFollowerTrend(value: unknown): SteamFollowerTrendPoint[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((point) => {
+    if (!point || typeof point !== "object") return []
+    const item = point as Record<string, unknown>
+    const followers = Number(item.followers)
+    const recordedAt = item.recordedAt == null ? "" : String(item.recordedAt)
+    if (!Number.isFinite(followers) || followers < 0 || !recordedAt) return []
+    return [{ followers, recordedAt }]
+  })
 }
 
 function toGame(row: Record<string, unknown>): SteamGameSummary {
@@ -103,6 +121,7 @@ function toGame(row: Record<string, unknown>): SteamGameSummary {
     followers24hDelta: optionalNumber(row.followers_24h_delta),
     followers7dDelta: optionalNumber(row.followers_7d_delta),
     followers7dGrowthPct: optionalNumber(row.followers_7d_growth_pct),
+    followersTrend: parseFollowerTrend(row.follower_trend),
     ccuSource: optionalString(row.ccu_source) as SteamCcuSource | undefined,
     ccuAppid: optionalNumber(row.ccu_appid),
     ccuCurrent: optionalNumber(row.ccu_current),
@@ -385,6 +404,7 @@ export class SteamRepository {
     const result = await this.db.query(
       `SELECT
          g.*,
+         COALESCE(follower_trend.points, '[]'::jsonb) AS follower_trend,
          CASE
            WHEN previous_ccu.ccu IS NULL OR previous_ccu.ccu <= 0 OR g.ccu_current IS NULL THEN NULL
            ELSE ROUND(((g.ccu_current - previous_ccu.ccu)::numeric / previous_ccu.ccu::numeric) * 100, 1)::float
@@ -429,6 +449,15 @@ export class SteamRepository {
          ORDER BY ABS(EXTRACT(EPOCH FROM (s.recorded_at - (NOW() - INTERVAL '7 days')))) ASC
          LIMIT 1
        ) follower_7d ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT jsonb_agg(
+           jsonb_build_object('recordedAt', s.recorded_at, 'followers', s.followers)
+           ORDER BY s.recorded_at
+         ) AS points
+         FROM steam_follower_snapshots s
+         WHERE s.appid = g.appid
+           AND s.recorded_at >= NOW() - INTERVAL '7 days'
+       ) follower_trend ON TRUE
        ${where}
        ORDER BY ${orderBy}
        LIMIT ${limitParam}`,
