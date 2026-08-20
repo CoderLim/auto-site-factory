@@ -48,6 +48,24 @@ function targetRoots(target: SitemapTarget): string {
   return (many.length > 0 ? many : single ? [single] : []).join("\n")
 }
 
+async function writeClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "")
+  textarea.style.position = "fixed"
+  textarea.style.opacity = "0"
+  document.body.appendChild(textarea)
+  textarea.select()
+  const copied = document.execCommand("copy")
+  document.body.removeChild(textarea)
+  if (!copied) throw new Error("浏览器未允许复制到剪贴板")
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("keywords")
   const [range, setRange] = useState("1d")
@@ -170,6 +188,22 @@ export default function App() {
     if (tab === "steam") await refreshSteam()
   }
 
+  const copyKeywords = async (values: string[]) => {
+    const currentKeywords = values.map((value) => value.trim()).filter(Boolean)
+    if (currentKeywords.length === 0) {
+      setNotice("当前页没有可复制的关键词")
+      return
+    }
+
+    try {
+      await writeClipboard(currentKeywords.join("\n"))
+      setError("")
+      setNotice(`已复制 ${currentKeywords.length} 个关键词，每行一个`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const runNow = async () => {
     setBusy(true)
     setError("")
@@ -279,6 +313,7 @@ export default function App() {
                   <option value="">全部来源</option>
                   {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                 </select>
+                <button className="copy-keywords" onClick={() => void copyKeywords(keywords.map((item) => item.keyword))} disabled={keywords.length === 0}>复制关键词</button>
               </div>
             </div>
             <div className="stats">
@@ -366,6 +401,7 @@ export default function App() {
                   <option value="growth">按 24h 增长</option>
                 </select>
                 <label className="check"><input type="checkbox" checked={includeBaseline} onChange={(event) => setIncludeBaseline(event.target.checked)} />包含初始化基线</label>
+                <button className="copy-keywords" onClick={() => void copyKeywords(steamGames.map((game) => game.name))} disabled={steamGames.length === 0 || steamLoading}>复制关键词</button>
               </div>
             </div>
             <div className="stats">
