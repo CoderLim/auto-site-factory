@@ -59,6 +59,11 @@ export type SteamGame = {
   hasPlaytest: boolean
   playtestAppid?: number
   playtestSeenAt?: string
+  followersCurrent?: number
+  followersSource?: "store_dlc" | "community_xml"
+  followers24hDelta?: number
+  followers7dDelta?: number
+  followers7dGrowthPct?: number
   ccuSource?: "game" | "demo" | "playtest"
   ccuAppid?: number
   ccuCurrent?: number
@@ -66,6 +71,7 @@ export type SteamGame = {
   ccu7dPeak?: number
   ccu24hGrowthPct?: number
   lastStoreCheckedAt?: string
+  lastFollowerCheckedAt?: string
   lastCcuCheckedAt?: string
 }
 
