@@ -64,6 +64,7 @@ export type SteamGame = {
   followers24hDelta?: number
   followers7dDelta?: number
   followers7dGrowthPct?: number
+  followersTrend: Array<{ recordedAt: string; followers: number }>
   ccuSource?: "game" | "demo" | "playtest"
   ccuAppid?: number
   ccuCurrent?: number
