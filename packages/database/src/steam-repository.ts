@@ -2,6 +2,7 @@ import type { Database } from "./client.js"
 
 export type SteamStoreStatus = "unknown" | "coming_soon" | "released" | "unavailable"
 export type SteamCcuSource = "game" | "demo" | "playtest"
+export type SteamFollowerSource = "store_dlc" | "community_xml"
 
 export interface SteamAppListItem {
   appid: number
@@ -29,6 +30,11 @@ export interface SteamCcuSample {
   ccu: number
 }
 
+export interface SteamFollowerSample {
+  followers: number
+  source: SteamFollowerSource
+}
+
 export interface SteamGameSummary {
   appid: number
   name: string
@@ -47,6 +53,11 @@ export interface SteamGameSummary {
   hasPlaytest: boolean
   playtestAppid?: number
   playtestSeenAt?: string
+  followersCurrent?: number
+  followersSource?: SteamFollowerSource
+  followers24hDelta?: number
+  followers7dDelta?: number
+  followers7dGrowthPct?: number
   ccuSource?: SteamCcuSource
   ccuAppid?: number
   ccuCurrent?: number
@@ -54,6 +65,7 @@ export interface SteamGameSummary {
   ccu7dPeak?: number
   ccu24hGrowthPct?: number
   lastStoreCheckedAt?: string
+  lastFollowerCheckedAt?: string
   lastCcuCheckedAt?: string
 }
 
@@ -86,6 +98,11 @@ function toGame(row: Record<string, unknown>): SteamGameSummary {
     hasPlaytest: Boolean(row.has_playtest),
     playtestAppid: optionalNumber(row.playtest_appid),
     playtestSeenAt: optionalString(row.playtest_seen_at),
+    followersCurrent: optionalNumber(row.followers_current),
+    followersSource: optionalString(row.followers_source) as SteamFollowerSource | undefined,
+    followers24hDelta: optionalNumber(row.followers_24h_delta),
+    followers7dDelta: optionalNumber(row.followers_7d_delta),
+    followers7dGrowthPct: optionalNumber(row.followers_7d_growth_pct),
     ccuSource: optionalString(row.ccu_source) as SteamCcuSource | undefined,
     ccuAppid: optionalNumber(row.ccu_appid),
     ccuCurrent: optionalNumber(row.ccu_current),
@@ -93,6 +110,7 @@ function toGame(row: Record<string, unknown>): SteamGameSummary {
     ccu7dPeak: optionalNumber(row.ccu_7d_peak),
     ccu24hGrowthPct: optionalNumber(row.ccu_24h_growth_pct),
     lastStoreCheckedAt: optionalString(row.last_store_checked_at),
+    lastFollowerCheckedAt: optionalString(row.last_follower_checked_at),
     lastCcuCheckedAt: optionalString(row.last_ccu_checked_at)
   }
 }
@@ -232,6 +250,46 @@ export class SteamRepository {
     )
   }
 
+  async listForFollowerCheck(limit = 300): Promise<SteamGameSummary[]> {
+    const result = await this.db.query(
+      `SELECT *
+       FROM steam_games
+       WHERE is_baseline = FALSE
+         AND app_type = 'game'
+         AND store_status <> 'unavailable'
+         AND (last_follower_checked_at IS NULL OR last_follower_checked_at < NOW() - INTERVAL '6 hours')
+       ORDER BY last_follower_checked_at ASC NULLS FIRST, first_observed_at DESC
+       LIMIT $1`,
+      [limit]
+    )
+    return result.rows.map((row) => toGame(row as Record<string, unknown>))
+  }
+
+  async recordFollowers(appid: number, sample?: SteamFollowerSample): Promise<void> {
+    if (!sample) {
+      await this.db.query(
+        `UPDATE steam_games SET last_follower_checked_at = NOW(), updated_at = NOW() WHERE appid = $1`,
+        [appid]
+      )
+      return
+    }
+
+    await this.db.query(
+      `INSERT INTO steam_follower_snapshots(appid, followers, source, recorded_at)
+       VALUES ($1, $2, $3, NOW())`,
+      [appid, sample.followers, sample.source]
+    )
+    await this.db.query(
+      `UPDATE steam_games
+       SET followers_current = $2,
+           followers_source = $3,
+           last_follower_checked_at = NOW(),
+           updated_at = NOW()
+       WHERE appid = $1`,
+      [appid, sample.followers, sample.source]
+    )
+  }
+
   async listForCcuCheck(limit = 300): Promise<SteamGameSummary[]> {
     const result = await this.db.query(
       `SELECT *
@@ -293,7 +351,7 @@ export class SteamRepository {
     status?: string
     minCcu?: number
     includeBaseline?: boolean
-    sort?: "recent" | "ccu" | "growth"
+    sort?: "recent" | "ccu" | "growth" | "followers" | "follower_growth"
     limit?: number
   } = {}): Promise<SteamGameSummary[]> {
     const conditions: string[] = ["g.app_type = 'game'"]
@@ -318,15 +376,31 @@ export class SteamRepository {
       ? "g.ccu_current DESC NULLS LAST, g.first_observed_at DESC"
       : options.sort === "growth"
         ? "ccu_24h_growth_pct DESC NULLS LAST, g.first_observed_at DESC"
-        : "g.first_observed_at DESC"
+        : options.sort === "followers"
+          ? "g.followers_current DESC NULLS LAST, g.first_observed_at DESC"
+          : options.sort === "follower_growth"
+            ? "followers_7d_delta DESC NULLS LAST, g.first_observed_at DESC"
+            : "g.first_observed_at DESC"
 
     const result = await this.db.query(
       `SELECT
          g.*,
          CASE
-           WHEN previous.ccu IS NULL OR previous.ccu <= 0 OR g.ccu_current IS NULL THEN NULL
-           ELSE ROUND(((g.ccu_current - previous.ccu)::numeric / previous.ccu::numeric) * 100, 1)::float
-         END AS ccu_24h_growth_pct
+           WHEN previous_ccu.ccu IS NULL OR previous_ccu.ccu <= 0 OR g.ccu_current IS NULL THEN NULL
+           ELSE ROUND(((g.ccu_current - previous_ccu.ccu)::numeric / previous_ccu.ccu::numeric) * 100, 1)::float
+         END AS ccu_24h_growth_pct,
+         CASE
+           WHEN follower_24h.followers IS NULL OR g.followers_current IS NULL THEN NULL
+           ELSE g.followers_current - follower_24h.followers
+         END AS followers_24h_delta,
+         CASE
+           WHEN follower_7d.followers IS NULL OR g.followers_current IS NULL THEN NULL
+           ELSE g.followers_current - follower_7d.followers
+         END AS followers_7d_delta,
+         CASE
+           WHEN follower_7d.followers IS NULL OR follower_7d.followers <= 0 OR g.followers_current IS NULL THEN NULL
+           ELSE ROUND(((g.followers_current - follower_7d.followers)::numeric / follower_7d.followers::numeric) * 100, 1)::float
+         END AS followers_7d_growth_pct
        FROM steam_games g
        LEFT JOIN LATERAL (
          SELECT s.ccu
@@ -336,7 +410,25 @@ export class SteamRepository {
            AND s.recorded_at >= NOW() - INTERVAL '36 hours'
          ORDER BY s.recorded_at DESC
          LIMIT 1
-       ) previous ON TRUE
+       ) previous_ccu ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT s.followers
+         FROM steam_follower_snapshots s
+         WHERE s.appid = g.appid
+           AND s.recorded_at <= NOW() - INTERVAL '18 hours'
+           AND s.recorded_at >= NOW() - INTERVAL '36 hours'
+         ORDER BY ABS(EXTRACT(EPOCH FROM (s.recorded_at - (NOW() - INTERVAL '24 hours')))) ASC
+         LIMIT 1
+       ) follower_24h ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT s.followers
+         FROM steam_follower_snapshots s
+         WHERE s.appid = g.appid
+           AND s.recorded_at <= NOW() - INTERVAL '6 days'
+           AND s.recorded_at >= NOW() - INTERVAL '8 days'
+         ORDER BY ABS(EXTRACT(EPOCH FROM (s.recorded_at - (NOW() - INTERVAL '7 days')))) ASC
+         LIMIT 1
+       ) follower_7d ON TRUE
        ${where}
        ORDER BY ${orderBy}
        LIMIT ${limitParam}`,
