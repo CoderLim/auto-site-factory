@@ -11,7 +11,7 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "authorization,content-type",
+    "access-control-allow-headers": "authorization, content-type",
     "access-control-allow-methods": "GET,POST,PUT,OPTIONS"
   })
   response.end(JSON.stringify(body))
@@ -25,8 +25,7 @@ function authorized(request: IncomingMessage): boolean {
 async function readJson<T>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = []
   for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-  const text = Buffer.concat(chunks).toString("utf8").trim()
-  return (text ? JSON.parse(text) : {}) as T
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T
 }
 
 function sinceForRange(range: string | null): Date {
@@ -34,9 +33,9 @@ function sinceForRange(range: string | null): Date {
   return new Date(Date.now() - hours * 60 * 60 * 1000)
 }
 
-function startSitemapWorker(): { pid?: number } {
+function runWorkerOnce(): { pid?: number } {
   const workerPath = fileURLToPath(new URL("../../worker/dist/index.js", import.meta.url))
-  const child = spawn(process.execPath, [workerPath, "--once", "--source=sitemap"], {
+  const child = spawn(process.execPath, [workerPath, "--once"], {
     detached: true,
     stdio: "ignore",
     env: process.env
@@ -86,7 +85,9 @@ const server = createServer(async (request, response) => {
       const minCcu = minCcuRaw ? Number(minCcuRaw) : undefined
       const includeBaseline = url.searchParams.get("includeBaseline") === "true"
       const sortRaw = url.searchParams.get("sort")
-      const sort = sortRaw === "ccu" || sortRaw === "growth" ? sortRaw : "recent"
+      const sort = sortRaw === "ccu" || sortRaw === "growth" || sortRaw === "followers" || sortRaw === "follower_growth"
+        ? sortRaw
+        : "recent"
       return sendJson(response, 200, {
         games: await steam.listGames({
           since: sinceForRange(range),
@@ -103,7 +104,7 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/api/sitemap/targets") {
-      const body = await readJson<Partial<SourceTarget>>(request)
+      const body = await readJson<{ id: string; name: string; scope: string; enabled?: boolean; config?: Record<string, unknown> }>(request)
       if (!body.id || !body.name || !body.scope) return sendJson(response, 400, { error: "id, name and scope are required" })
       const target: SourceTarget = {
         id: body.id,
@@ -120,9 +121,9 @@ const server = createServer(async (request, response) => {
     const targetMatch = url.pathname.match(/^\/api\/sitemap\/targets\/([^/]+)$/)
     if (request.method === "PUT" && targetMatch) {
       const targetId = decodeURIComponent(targetMatch[1] ?? "")
+      const body = await readJson<{ name?: string; scope?: string; enabled?: boolean; config?: Record<string, unknown> }>(request)
       const existing = await sitemap.getTarget(targetId)
       if (!existing) return sendJson(response, 404, { error: "target not found" })
-      const body = await readJson<Partial<SourceTarget>>(request)
       const target: SourceTarget = {
         ...existing,
         name: body.name ?? existing.name,
@@ -137,9 +138,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/api/sitemap/signals") {
       const range = url.searchParams.get("range")
       const targetId = url.searchParams.get("targetId") || undefined
-      return sendJson(response, 200, {
-        signals: await sitemap.listSignals(sinceForRange(range), targetId)
-      })
+      return sendJson(response, 200, { signals: await sitemap.listSignals(sinceForRange(range), targetId) })
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/runs") {
@@ -147,18 +146,17 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/anomalies") {
-      return sendJson(response, 200, { anomalies: await sitemap.listAnomalies() })
+      return sendJson(response, 200, { anomalies: await sitemap.listAnomalies(100) })
     }
 
     if (request.method === "POST" && url.pathname === "/api/sitemap/run") {
-      return sendJson(response, 202, { status: "queued", ...startSitemapWorker() })
+      return sendJson(response, 202, { status: "started", ...runWorkerOnce() })
     }
 
     return sendJson(response, 404, { error: "not found" })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    console.error("[api] request failed", error)
-    return sendJson(response, 500, { error: message })
+    console.error(error)
+    return sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) })
   } finally {
     await db.close()
   }
