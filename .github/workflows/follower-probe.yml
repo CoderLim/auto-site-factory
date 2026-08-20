@@ -1,0 +1,100 @@
+name: Steam Follower Probe
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/follower-probe.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe Steam official game-group follower surfaces
+        shell: bash
+        run: |
+          node <<'NODE'
+          const apps = [
+            [4534960, 'Dear Passengers'],
+            [4570720, 'DragonSword Awakening'],
+            [1913120, 'Tears of Metal'],
+            [218620, 'PAYDAY 2'],
+            [570, 'Dota 2'],
+          ]
+
+          const ua = 'Mozilla/5.0 (compatible; auto-site-factory-follower-probe/0.1)'
+          const get = async (url) => {
+            const r = await fetch(url, {
+              headers: {
+                'user-agent': ua,
+                accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+              },
+              redirect: 'follow'
+            })
+            return { status: r.status, url: r.url, text: await r.text() }
+          }
+
+          const number = (value) => value ? Number(value.replaceAll(',', '')) : null
+          const memberCountFromXml = (text) => number(text.match(/<memberCount>([\d,]+)<\/memberCount>/i)?.[1])
+          const memberCountFromHtml = (text) => {
+            for (const pattern of [
+              /1\s*-\s*\d+\s+of\s+([\d,]+)\s+Members/i,
+              /([\d,]+)\s+MEMBERS/i,
+              /class=["'][^"']*membercount[^"']*["'][^>]*>[\s\S]{0,100}?([\d,]+)[\s\S]{0,30}?MEMBERS/i,
+            ]) {
+              const value = number(text.match(pattern)?.[1])
+              if (value != null) return value
+            }
+            return null
+          }
+
+          const groupIdFromHtml = (text) => {
+            const patterns = [
+              /OpenGroupChat\(\s*['"](\d+)['"]\s*\)/i,
+              /steamid[_-]?group[^\d]{0,30}(\d{16,20})/i,
+            ]
+            for (const pattern of patterns) {
+              const value = text.match(pattern)?.[1]
+              if (value) return value
+            }
+            return null
+          }
+
+          for (const [appid, name] of apps) {
+            console.log(`\n=== ${appid} ${name} ===`)
+            const app = await get(`https://steamcommunity.com/app/${appid}/`)
+            const groupId64 = groupIdFromHtml(app.text)
+            console.log(JSON.stringify({
+              surface: 'app', status: app.status, finalUrl: app.url,
+              groupId64, htmlMemberCount: memberCountFromHtml(app.text), bytes: app.text.length
+            }))
+
+            for (const surface of [
+              `https://steamcommunity.com/games/${appid}/members`,
+              `https://steamcommunity.com/ogg/${appid}/members`,
+            ]) {
+              const page = await get(surface)
+              console.log(JSON.stringify({
+                surface, status: page.status, finalUrl: page.url,
+                groupId64: groupIdFromHtml(page.text),
+                htmlMemberCount: memberCountFromHtml(page.text), bytes: page.text.length
+              }))
+            }
+
+            if (groupId64) {
+              const gidPage = await get(`https://steamcommunity.com/gid/${groupId64}/members`)
+              console.log(JSON.stringify({
+                surface: 'gid-members', status: gidPage.status, finalUrl: gidPage.url,
+                htmlMemberCount: memberCountFromHtml(gidPage.text), bytes: gidPage.text.length
+              }))
+
+              const xml = await get(`https://steamcommunity.com/gid/${groupId64}/memberslistxml/?xml=1`)
+              const firstTags = [...xml.text.matchAll(/<([A-Za-z][A-Za-z0-9_]*)>/g)]
+                .slice(0, 20).map((match) => match[1])
+              console.log(JSON.stringify({
+                surface: 'gid-members-xml', status: xml.status, finalUrl: xml.url,
+                xmlMemberCount: memberCountFromXml(xml.text), bytes: xml.text.length, firstTags
+              }))
+            }
+          }
+          NODE
