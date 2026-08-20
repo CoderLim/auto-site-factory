@@ -9,6 +9,7 @@ on:
       - "apps/worker/src/steam-monitor.ts"
       - "packages/database/src/steam-repository.ts"
       - "migrations/003_steam_lifecycle.sql"
+      - "migrations/005_steam_followers.sql"
   schedule:
     # GitHub cron is UTC. Offset from the top of the hour to reduce scheduler contention.
     - cron: "37 * * * *"
@@ -25,6 +26,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
       STEAM_STORE_CHECK_LIMIT: "200"
+      STEAM_FOLLOWER_CHECK_LIMIT: "300"
       STEAM_CCU_CHECK_LIMIT: "300"
 
     steps:
