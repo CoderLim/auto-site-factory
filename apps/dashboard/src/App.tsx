@@ -34,6 +34,40 @@ function formatDelta(value?: number) {
   return `${value > 0 ? "+" : ""}${value.toLocaleString()}`
 }
 
+function FollowerSparkline({ points }: { points: SteamGame["followersTrend"] }) {
+  if (!points || points.length < 2) return <span className="sparkline-empty">采样中</span>
+
+  const width = 132
+  const height = 38
+  const padding = 2
+  const times = points.map((point) => new Date(point.recordedAt).getTime())
+  const values = points.map((point) => point.followers)
+  const minTime = Math.min(...times)
+  const maxTime = Math.max(...times)
+  const minValue = Math.min(...values)
+  const maxValue = Math.max(...values)
+  const timeSpan = Math.max(1, maxTime - minTime)
+  const valueSpan = Math.max(1, maxValue - minValue)
+  const line = points.map((point, index) => {
+    const time = times[index] ?? minTime
+    const x = padding + ((time - minTime) / timeSpan) * (width - padding * 2)
+    const y = maxValue === minValue
+      ? height / 2
+      : padding + (1 - (point.followers - minValue) / valueSpan) * (height - padding * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(" ")
+  const first = values[0] ?? 0
+  const last = values.at(-1) ?? first
+  const delta = last - first
+
+  return (
+    <svg className="follower-sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`最近 7 天 Followers 走势，${formatDelta(delta)}`}>
+      <title>{`最近 ${points.length} 个采样点：${first.toLocaleString()} → ${last.toLocaleString()} (${formatDelta(delta)})`}</title>
+      <polyline points={line} />
+    </svg>
+  )
+}
+
 function statusLabel(status: SteamGame["storeStatus"]) {
   if (status === "coming_soon") return "Coming Soon"
   if (status === "released") return "Released"
@@ -418,7 +452,7 @@ export default function App() {
             </div>
             <div className="card table-card">
               <table>
-                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>Followers</th><th>24h +F</th><th>7d +F</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>CCU 24h 增长</th><th>Release</th></tr></thead>
+                <thead><tr><th>游戏</th><th>首次发现</th><th>状态</th><th>Demo</th><th>Playtest</th><th>Followers</th><th>Followers 7d 走势</th><th>CCU</th><th>24h Peak</th><th>7d Peak</th><th>CCU 24h 增长</th><th>Release</th></tr></thead>
                 <tbody>
                   {steamGames.map((game) => (
                     <tr key={game.appid}>
@@ -431,8 +465,13 @@ export default function App() {
                       <td>{game.hasDemo ? (game.demoAppid ? <a href={`https://store.steampowered.com/app/${game.demoAppid}/`} target="_blank" rel="noreferrer">Yes ↗</a> : "Yes") : "—"}</td>
                       <td>{game.hasPlaytest ? (game.playtestAppid ? <a href={`https://store.steampowered.com/app/${game.playtestAppid}/`} target="_blank" rel="noreferrer">Yes ↗</a> : "Yes") : "—"}</td>
                       <td><strong>{formatNumber(game.followersCurrent)}</strong>{game.followersSource && <small className="muted">{game.followersSource === "store_dlc" ? "store" : "community"}</small>}</td>
-                      <td className={(game.followers24hDelta ?? 0) > 0 ? "positive" : (game.followers24hDelta ?? 0) < 0 ? "negative" : ""}>{formatDelta(game.followers24hDelta)}</td>
-                      <td className={(game.followers7dDelta ?? 0) > 0 ? "positive" : (game.followers7dDelta ?? 0) < 0 ? "negative" : ""}>{formatDelta(game.followers7dDelta)}{game.followers7dGrowthPct != null && <small className="muted">{game.followers7dGrowthPct > 0 ? "+" : ""}{game.followers7dGrowthPct}%</small>}</td>
+                      <td className="follower-trend-cell">
+                        <FollowerSparkline points={game.followersTrend} />
+                        <small className="follower-trend-meta">
+                          <span className={(game.followers24hDelta ?? 0) > 0 ? "positive" : (game.followers24hDelta ?? 0) < 0 ? "negative" : ""}>24h {formatDelta(game.followers24hDelta)}</span>
+                          <span className={(game.followers7dDelta ?? 0) > 0 ? "positive" : (game.followers7dDelta ?? 0) < 0 ? "negative" : ""}>7d {formatDelta(game.followers7dDelta)}</span>
+                        </small>
+                      </td>
                       <td><strong>{formatNumber(game.ccuCurrent)}</strong>{game.ccuSource && <small className="muted">{game.ccuSource}</small>}</td>
                       <td>{formatNumber(game.ccu24hPeak)}</td>
                       <td>{formatNumber(game.ccu7dPeak)}</td>
