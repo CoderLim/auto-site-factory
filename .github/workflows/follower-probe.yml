@@ -70,6 +70,5 @@ jobs:
             await new Promise((resolve) => setTimeout(resolve, 100))
           }
           console.log(JSON.stringify({ total: apps.length, ok, missing, coveragePct: Math.round(ok / apps.length * 1000) / 10 }))
-          // Production rollout requires at least 90% coverage across very recent Coming Soon games.
           if (ok / apps.length < 0.9) process.exitCode = 2
           NODE
