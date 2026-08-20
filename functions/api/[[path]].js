@@ -114,7 +114,9 @@ export async function onRequest(context) {
       const minCcu = minCcuRaw ? Number(minCcuRaw) : undefined
       const includeBaseline = url.searchParams.get("includeBaseline") === "true"
       const sortRaw = url.searchParams.get("sort")
-      const sort = sortRaw === "ccu" || sortRaw === "growth" ? sortRaw : "recent"
+      const sort = sortRaw === "ccu" || sortRaw === "growth" || sortRaw === "followers" || sortRaw === "follower_growth"
+        ? sortRaw
+        : "recent"
       return await withRepos(env, async ({ steam }) => json({
         games: await steam.listGames({
           since: sinceForRange(range),
