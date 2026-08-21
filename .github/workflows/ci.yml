@@ -18,3 +18,55 @@ jobs:
       - run: npm test
       - name: Build Cloudflare Pages Function
         run: npx --yes wrangler@4.115.0 pages functions build functions --outfile=/tmp/pages-worker.js --compatibility-date=2026-08-12 --compatibility-flags=nodejs_compat
+
+  ph-temp-pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Pull all Product Hunt posts for 2026-08-20
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const base = 'https://vtrrhidkbjfqcqbiaaer.supabase.co/functions/v1/ph-temp-pull-20260821';
+          const fixed = {
+            k: '98d8797d9f4b42cf8f55d4b351703f1d',
+            enc: 'zDvr-AfvOg13r3JMH4DwJqTVa2r8Km_GC3fW1qUXh-XP2uqozEIlZ7l54zdxKRWAcZolftEjd2AEaFk',
+            iv: 'a9_k5Vx70fG1zqwy',
+            first: '100',
+          };
+          (async () => {
+            let after = null;
+            let all = [];
+            let totalCount = null;
+            let page = 0;
+            while (true) {
+              const u = new URL(base);
+              for (const [k,v] of Object.entries(fixed)) u.searchParams.set(k,v);
+              if (after) u.searchParams.set('after', after);
+              const r = await fetch(u);
+              const text = await r.text();
+              if (!r.ok) throw new Error(`proxy HTTP ${r.status}: ${text.slice(0,1000)}`);
+              const j = JSON.parse(text);
+              if (j.errors) throw new Error(JSON.stringify(j.errors));
+              const p = j.data.posts;
+              totalCount ??= p.totalCount;
+              all.push(...p.nodes);
+              page++;
+              console.log(`page=${page} fetched=${p.nodes.length} accumulated=${all.length} totalCount=${totalCount}`);
+              if (!p.pageInfo.hasNextPage) break;
+              after = p.pageInfo.endCursor;
+              if (!after) throw new Error('hasNextPage=true but missing endCursor');
+              if (page > 100) throw new Error('pagination guard exceeded');
+            }
+            const out = { productHuntDay: '2026-08-20', postedAfter: '2026-08-20T06:59:59Z', postedBefore: '2026-08-21T07:00:00Z', totalCount, fetchedCount: all.length, posts: all };
+            fs.writeFileSync('ph-products-2026-08-20.json', JSON.stringify(out, null, 2));
+            console.log(`DONE totalCount=${totalCount} fetchedCount=${all.length}`);
+          })().catch(e => { console.error(e); process.exit(1); });
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ph-products-2026-08-20
+          path: ph-products-2026-08-20.json
+          retention-days: 1
