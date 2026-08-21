@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Pull Product Hunt 2026-08-20
+      - name: Pull Product Hunt AI posts for 2026-08-20
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -37,7 +37,7 @@ jobs:
             iv: 'a9_k5Vx70fG1zqwy',
           };
           const sleep = ms => new Promise(r => setTimeout(r, ms));
-          async function requestPage(mode, after) {
+          async function request(mode, after = null) {
             while (true) {
               const u = new URL(base);
               for (const [k,v] of Object.entries(fixed)) u.searchParams.set(k,v);
@@ -49,62 +49,39 @@ jobs:
               try { j = JSON.parse(text); } catch { throw new Error(`${mode} invalid JSON HTTP ${r.status}: ${text.slice(0,1200)}`); }
               if (r.status === 429) {
                 const reset = Number(j?.errors?.[0]?.details?.reset_in ?? 60);
-                const delay = Math.max(5, Math.min(reset + 3, 900));
-                console.log(`${mode}: rate limited; reset_in=${reset}s, retrying after reset`);
-                await sleep(delay * 1000);
+                console.log(`${mode}: rate limited; reset_in=${reset}s`);
+                await sleep((Math.max(5, Math.min(reset + 3, 900))) * 1000);
                 continue;
               }
-              if (!r.ok) throw new Error(`${mode} proxy HTTP ${r.status}: ${text.slice(0,1200)}`);
+              if (!r.ok) throw new Error(`${mode} HTTP ${r.status}: ${text.slice(0,1200)}`);
               if (j.errors) throw new Error(`${mode} GraphQL: ${JSON.stringify(j.errors)}`);
               return j.data.posts;
             }
           }
-          async function pull(mode) {
-            let after = null, totalCount = null, page = 0;
-            const rows = [];
+          (async () => {
+            const count = await request('count');
+            const allTotalCount = count.totalCount;
+            let after = null, aiTotalCount = null, pages = 0;
+            const posts = [];
             while (true) {
-              const p = await requestPage(mode, after);
-              totalCount ??= p.totalCount;
-              rows.push(...p.nodes);
-              page++;
-              console.log(`${mode}: page=${page} fetched=${p.nodes.length} accumulated=${rows.length} total=${totalCount}`);
+              const p = await request('ai', after);
+              aiTotalCount ??= p.totalCount;
+              posts.push(...p.nodes);
+              pages++;
+              console.log(`ai: page=${pages} fetched=${p.nodes.length} accumulated=${posts.length} total=${aiTotalCount}`);
               if (!p.pageInfo.hasNextPage) break;
               after = p.pageInfo.endCursor;
-              if (!after) throw new Error(`${mode}: missing endCursor`);
-              if (page > 100) throw new Error(`${mode}: pagination guard exceeded`);
+              if (!after) throw new Error('ai: missing endCursor');
+              if (pages > 100) throw new Error('ai: pagination guard exceeded');
             }
-            return { totalCount, fetchedCount: rows.length, pages: page, rows };
-          }
-          (async () => {
-            const all = await pull('all');
-            if (all.fetchedCount !== all.totalCount) throw new Error(`all count mismatch ${all.fetchedCount}/${all.totalCount}`);
-            const ai = await pull('ai');
-            if (ai.fetchedCount !== ai.totalCount) throw new Error(`ai count mismatch ${ai.fetchedCount}/${ai.totalCount}`);
-            const aiRe = /\b(ai|artificial intelligence|agentic|ai agent|agents?|llm|gpt|copilot|chatbot|machine learning|rag|prompt|voice ai|ai voice|ai video|ai image|ai coding|ai code)\b/i;
-            const keywordHits = all.rows.filter(p => aiRe.test(`${p.name || ''} ${p.tagline || ''}`));
-            const merged = new Map();
-            for (const p of ai.rows) merged.set(String(p.id), {...p, source:['topic']});
-            for (const p of keywordHits) {
-              const id = String(p.id);
-              if (merged.has(id)) merged.get(id).source.push('keyword');
-              else merged.set(id, {...p, source:['keyword']});
-            }
-            const out = {
-              productHuntDay: '2026-08-20',
-              postedAfter: '2026-08-20T06:59:59Z',
-              postedBefore: '2026-08-21T07:00:00Z',
-              all: {totalCount:all.totalCount,fetchedCount:all.fetchedCount,pages:all.pages,posts:all.rows},
-              aiTopic: {totalCount:ai.totalCount,fetchedCount:ai.fetchedCount,pages:ai.pages,posts:ai.rows},
-              keywordHitsCount: keywordHits.length,
-              mergedAiCandidatesCount: merged.size,
-              mergedAiCandidates: [...merged.values()],
-            };
-            fs.writeFileSync('ph-products-2026-08-20.json', JSON.stringify(out, null, 2));
-            console.log(`DONE all=${all.fetchedCount}/${all.totalCount} aiTopic=${ai.fetchedCount}/${ai.totalCount} keywordHits=${keywordHits.length} merged=${merged.size}`);
+            if (posts.length !== aiTotalCount) throw new Error(`ai count mismatch ${posts.length}/${aiTotalCount}`);
+            const out = {productHuntDay:'2026-08-20',allTotalCount,aiTopicTotalCount:aiTotalCount,aiFetchedCount:posts.length,aiPages:pages,posts};
+            fs.writeFileSync('ph-ai-products-2026-08-20.json', JSON.stringify(out, null, 2));
+            console.log(`DONE allTotal=${allTotalCount} ai=${posts.length}/${aiTotalCount}`);
           })().catch(e => { console.error(e); process.exit(1); });
           NODE
       - uses: actions/upload-artifact@v4
         with:
-          name: ph-products-2026-08-20
-          path: ph-products-2026-08-20.json
+          name: ph-ai-products-2026-08-20
+          path: ph-ai-products-2026-08-20.json
           retention-days: 1
