@@ -20,8 +20,12 @@ jobs:
         run: npx --yes wrangler@4.115.0 pages functions build functions --outfile=/tmp/pages-worker.js --compatibility-date=2026-08-12 --compatibility-flags=nodejs_compat
 
   ph-temp-pull:
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: temporary Product Hunt relay')
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -37,10 +41,8 @@ jobs:
             first: '100',
           };
           (async () => {
-            let after = null;
-            let all = [];
-            let totalCount = null;
-            let page = 0;
+            let after = null, totalCount = null, page = 0;
+            const all = [];
             while (true) {
               const u = new URL(base);
               for (const [k,v] of Object.entries(fixed)) u.searchParams.set(k,v);
@@ -57,16 +59,18 @@ jobs:
               console.log(`page=${page} fetched=${p.nodes.length} accumulated=${all.length} totalCount=${totalCount}`);
               if (!p.pageInfo.hasNextPage) break;
               after = p.pageInfo.endCursor;
-              if (!after) throw new Error('hasNextPage=true but missing endCursor');
+              if (!after) throw new Error('missing endCursor');
               if (page > 100) throw new Error('pagination guard exceeded');
             }
-            const out = { productHuntDay: '2026-08-20', postedAfter: '2026-08-20T06:59:59Z', postedBefore: '2026-08-21T07:00:00Z', totalCount, fetchedCount: all.length, posts: all };
-            fs.writeFileSync('ph-products-2026-08-20.json', JSON.stringify(out, null, 2));
+            fs.mkdirSync('tmp', { recursive: true });
+            fs.writeFileSync('tmp/ph-products-2026-08-20.json', JSON.stringify({ productHuntDay:'2026-08-20', totalCount, fetchedCount:all.length, posts:all }, null, 2));
             console.log(`DONE totalCount=${totalCount} fetchedCount=${all.length}`);
           })().catch(e => { console.error(e); process.exit(1); });
           NODE
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ph-products-2026-08-20
-          path: ph-products-2026-08-20.json
-          retention-days: 1
+      - name: Commit temporary result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp/ph-products-2026-08-20.json
+          git commit -m "chore: store temporary Product Hunt pull"
+          git push
