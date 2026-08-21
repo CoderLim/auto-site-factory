@@ -36,9 +36,8 @@ jobs:
             enc: 'zDvr-AfvOg13r3JMH4DwJqTVa2r8Km_GC3fW1qUXh-XP2uqozEIlZ7l54zdxKRWAcZolftEjd2AEaFk',
             iv: 'a9_k5Vx70fG1zqwy',
           };
-          async function pull(mode) {
-            let after = null, totalCount = null, page = 0;
-            const rows = [];
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          async function requestPage(mode, after) {
             while (true) {
               const u = new URL(base);
               for (const [k,v] of Object.entries(fixed)) u.searchParams.set(k,v);
@@ -46,10 +45,25 @@ jobs:
               if (after) u.searchParams.set('after', after);
               const r = await fetch(u);
               const text = await r.text();
+              let j;
+              try { j = JSON.parse(text); } catch { throw new Error(`${mode} invalid JSON HTTP ${r.status}: ${text.slice(0,1200)}`); }
+              if (r.status === 429) {
+                const reset = Number(j?.errors?.[0]?.details?.reset_in ?? 60);
+                const delay = Math.max(5, Math.min(reset + 3, 900));
+                console.log(`${mode}: rate limited; reset_in=${reset}s, retrying after reset`);
+                await sleep(delay * 1000);
+                continue;
+              }
               if (!r.ok) throw new Error(`${mode} proxy HTTP ${r.status}: ${text.slice(0,1200)}`);
-              const j = JSON.parse(text);
               if (j.errors) throw new Error(`${mode} GraphQL: ${JSON.stringify(j.errors)}`);
-              const p = j.data.posts;
+              return j.data.posts;
+            }
+          }
+          async function pull(mode) {
+            let after = null, totalCount = null, page = 0;
+            const rows = [];
+            while (true) {
+              const p = await requestPage(mode, after);
               totalCount ??= p.totalCount;
               rows.push(...p.nodes);
               page++;
@@ -63,7 +77,9 @@ jobs:
           }
           (async () => {
             const all = await pull('all');
+            if (all.fetchedCount !== all.totalCount) throw new Error(`all count mismatch ${all.fetchedCount}/${all.totalCount}`);
             const ai = await pull('ai');
+            if (ai.fetchedCount !== ai.totalCount) throw new Error(`ai count mismatch ${ai.fetchedCount}/${ai.totalCount}`);
             const aiRe = /\b(ai|artificial intelligence|agentic|ai agent|agents?|llm|gpt|copilot|chatbot|machine learning|rag|prompt|voice ai|ai voice|ai video|ai image|ai coding|ai code)\b/i;
             const keywordHits = all.rows.filter(p => aiRe.test(`${p.name || ''} ${p.tagline || ''}`));
             const merged = new Map();
