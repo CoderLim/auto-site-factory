@@ -48,6 +48,9 @@ export type SteamGame = {
   firstObservedAt: string
   isBaseline: boolean
   steamLastModifiedAt?: string
+  appListChangedAt?: string
+  opportunityAt?: string
+  opportunityReason?: "new_app" | "released" | "demo" | "playtest" | "ccu_spike" | "follower_spike"
   storeStatus: "unknown" | "coming_soon" | "released" | "unavailable"
   storeUrl?: string
   releaseDateText?: string
