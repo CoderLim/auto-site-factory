@@ -56,3 +56,23 @@ jobs:
 
       - name: Run Steam lifecycle monitor
         run: node apps/worker/dist/steam-monitor.js
+
+      - name: Log recent Steam opportunities
+        run: |
+          node --input-type=module <<'NODE'
+          import { Database, SteamRepository } from './packages/database/dist/index.js'
+          const db = new Database()
+          try {
+            const repository = new SteamRepository(db)
+            const games = await repository.listGames({
+              since: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+              sort: 'ccu',
+              limit: 20
+            })
+            for (const game of games) {
+              console.log(`[steam-opportunity] appid=${game.appid} ccu=${game.ccuCurrent ?? 0} reason=${game.opportunityReason ?? 'unknown'} at=${game.opportunityAt ?? game.firstObservedAt} name=${game.name}`)
+            }
+          } finally {
+            await db.close()
+          }
+          NODE
