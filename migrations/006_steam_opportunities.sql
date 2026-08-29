@@ -14,9 +14,15 @@ CREATE INDEX IF NOT EXISTS idx_steam_games_opportunity
 CREATE INDEX IF NOT EXISTS idx_steam_games_app_list_changed
   ON steam_games(app_list_changed_at DESC NULLS LAST);
 
--- Rewind the official incremental cursor once so games modified during the last
--- month are replayed through the new update path. This is important for baseline
--- apps that released after the monitor baseline was created.
+-- migrate.ts intentionally replays every SQL file, so guard this cursor rewind with
+-- a durable marker. It must happen exactly once, otherwise every hourly monitor run
+-- would keep replaying the same 30-day Steam change window.
+WITH marker AS (
+  INSERT INTO steam_monitor_state(key, value, updated_at)
+  VALUES ('steam_opportunity_backfill_v1', '{"applied":true}'::jsonb, NOW())
+  ON CONFLICT (key) DO NOTHING
+  RETURNING key
+)
 UPDATE steam_monitor_state
 SET value = jsonb_set(
       value,
@@ -25,4 +31,5 @@ SET value = jsonb_set(
       TRUE
     ),
     updated_at = NOW()
-WHERE key = 'steam_store_service_v1';
+WHERE key = 'steam_store_service_v1'
+  AND EXISTS (SELECT 1 FROM marker);
