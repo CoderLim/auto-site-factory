@@ -10,6 +10,7 @@ on:
       - "packages/database/src/steam-repository.ts"
       - "migrations/003_steam_lifecycle.sql"
       - "migrations/005_steam_followers.sql"
+      - "migrations/006_steam_opportunities.sql"
   schedule:
     # GitHub cron is UTC. Offset from the top of the hour to reduce scheduler contention.
     - cron: "37 * * * *"
