@@ -72,6 +72,14 @@ jobs:
             for (const game of games) {
               console.log(`[steam-opportunity] appid=${game.appid} ccu=${game.ccuCurrent ?? 0} reason=${game.opportunityReason ?? 'unknown'} at=${game.opportunityAt ?? game.firstObservedAt} name=${game.name}`)
             }
+            const target = await db.query(
+              `SELECT appid, name, is_baseline, steam_last_modified_at, app_list_changed_at,
+                      opportunity_at, opportunity_reason, store_status, release_date_text,
+                      released_at, last_store_checked_at, ccu_current, last_ccu_checked_at
+               FROM steam_games WHERE appid = $1`,
+              [4952980]
+            )
+            console.log(`[steam-target] ${JSON.stringify(target.rows[0] ?? null)}`)
           } finally {
             await db.close()
           }
