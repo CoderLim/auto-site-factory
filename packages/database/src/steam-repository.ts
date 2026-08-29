@@ -172,7 +172,7 @@ export class SteamRepository {
     const existingIds = new Set(existing.rows.map((row) => Number(row.appid)))
     const inserted = items.filter((item) => !existingIds.has(item.appid)).length
 
-    const result = await this.db.query<{ appid: string; inserted: boolean }>(
+    const result = await this.db.query<{ appid: string }>(
       `INSERT INTO steam_games(
          appid, name, app_type, first_observed_at, is_baseline, steam_last_modified_at,
          price_change_number, store_url, opportunity_at, opportunity_reason, created_at, updated_at
@@ -206,12 +206,12 @@ export class SteamRepository {
            app_list_changed_at = CASE
              WHEN (EXCLUDED.steam_last_modified_at IS NOT NULL AND (steam_games.steam_last_modified_at IS NULL OR EXCLUDED.steam_last_modified_at > steam_games.steam_last_modified_at))
                OR EXCLUDED.name IS DISTINCT FROM steam_games.name
-               OR EXCLUDED.price_change_number IS DISTINCT FROM steam_games.price_change_number
+               OR (EXCLUDED.price_change_number IS NOT NULL AND EXCLUDED.price_change_number IS DISTINCT FROM steam_games.price_change_number)
              THEN NOW()
              ELSE steam_games.app_list_changed_at
            END,
            updated_at = NOW()
-       RETURNING appid, (xmax = 0) AS inserted`,
+       RETURNING appid`,
       [payload, isBaseline]
     )
 
@@ -230,7 +230,7 @@ export class SteamRepository {
              OR (store_status = 'released' AND last_store_checked_at < NOW() - INTERVAL '7 days')
            ))
            OR (app_list_changed_at IS NOT NULL AND (last_store_checked_at IS NULL OR app_list_changed_at > last_store_checked_at))
-           OR (opportunity_at >= NOW() - INTERVAL '30 days' AND last_store_checked_at < NOW() - INTERVAL '12 hours')
+           OR (opportunity_at >= NOW() - INTERVAL '30 days' AND (last_store_checked_at IS NULL OR last_store_checked_at < NOW() - INTERVAL '12 hours'))
          )
        ORDER BY app_list_changed_at DESC NULLS LAST, last_store_checked_at ASC NULLS FIRST, first_observed_at DESC
        LIMIT $1`,
@@ -314,14 +314,16 @@ export class SteamRepository {
            END,
            last_follower_checked_at = NOW(),
            updated_at = NOW()
-       FROM LATERAL (
-         SELECT s.followers
-         FROM steam_follower_snapshots s
-         WHERE s.appid = $1
-           AND s.recorded_at <= NOW() - INTERVAL '6 days'
-           AND s.recorded_at >= NOW() - INTERVAL '8 days'
-         ORDER BY ABS(EXTRACT(EPOCH FROM (s.recorded_at - (NOW() - INTERVAL '7 days')))) ASC
-         LIMIT 1
+       FROM (
+         SELECT (
+           SELECT s.followers
+           FROM steam_follower_snapshots s
+           WHERE s.appid = $1
+             AND s.recorded_at <= NOW() - INTERVAL '6 days'
+             AND s.recorded_at >= NOW() - INTERVAL '8 days'
+           ORDER BY ABS(EXTRACT(EPOCH FROM (s.recorded_at - (NOW() - INTERVAL '7 days')))) ASC
+           LIMIT 1
+         ) AS followers
        ) previous
        WHERE g.appid = $1`,
       [appid, sample.followers, sample.source]
@@ -368,14 +370,16 @@ export class SteamRepository {
            opportunity_reason = CASE WHEN previous.ccu > 0 AND $4 >= 100 AND $4 >= previous.ccu * 2 THEN 'ccu_spike' ELSE g.opportunity_reason END,
            last_ccu_checked_at = NOW(),
            updated_at = NOW()
-       FROM LATERAL (
-         SELECT s.ccu
-         FROM steam_game_snapshots s
-         WHERE s.appid = $1
-           AND s.recorded_at <= NOW() - INTERVAL '18 hours'
-           AND s.recorded_at >= NOW() - INTERVAL '36 hours'
-         ORDER BY s.recorded_at DESC
-         LIMIT 1
+       FROM (
+         SELECT (
+           SELECT s.ccu
+           FROM steam_game_snapshots s
+           WHERE s.appid = $1
+             AND s.recorded_at <= NOW() - INTERVAL '18 hours'
+             AND s.recorded_at >= NOW() - INTERVAL '36 hours'
+           ORDER BY s.recorded_at DESC
+           LIMIT 1
+         ) AS ccu
        ) previous
        WHERE g.appid = $1`,
       [appid, current.sourceType, current.sourceAppid, current.ccu]
