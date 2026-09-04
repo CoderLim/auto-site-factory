@@ -37,9 +37,9 @@
     }
   },
   {
-    "id": "youtube-example",
+    "id": "youtube-api-example",
     "sourceType": "youtube",
-    "name": "Monitored YouTube Channel",
+    "name": "YouTube Channel via Data API",
     "scope": "ai",
     "enabled": false,
     "config": {
@@ -49,14 +49,14 @@
     }
   },
   {
-    "id": "rss-youtube-example",
-    "sourceType": "rss",
-    "name": "YouTube Channel Atom Feed",
+    "id": "youtube-atom-example",
+    "sourceType": "youtube",
+    "name": "YouTube Channel via Zero-Key Atom",
     "scope": "viral",
     "enabled": false,
     "config": {
-      "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=YOUR_CHANNEL_ID",
-      "maxItems": 25,
+      "channelId": "YOUR_CHANNEL_ID",
+      "maxResults": 25,
       "baselineOnFirstRun": true
     }
   },
