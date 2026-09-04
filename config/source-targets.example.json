@@ -37,15 +37,64 @@
     }
   },
   {
-    "id": "youtube-example",
+    "id": "youtube-api-example",
     "sourceType": "youtube",
-    "name": "Monitored YouTube Channel",
+    "name": "YouTube Channel via Data API",
     "scope": "ai",
     "enabled": false,
     "config": {
       "channelId": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
       "apiKeyEnv": "YOUTUBE_API_KEY",
       "maxResults": 25
+    }
+  },
+  {
+    "id": "youtube-atom-example",
+    "sourceType": "youtube",
+    "name": "YouTube Channel via Zero-Key Atom",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "channelId": "YOUR_CHANNEL_ID",
+      "maxResults": 25,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "hn-example",
+    "sourceType": "hn",
+    "name": "Hacker News New Stories",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "feed": "newstories",
+      "maxItems": 80,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "rss-example",
+    "sourceType": "rss",
+    "name": "Public RSS or Atom Feed",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "feedUrl": "https://example.com/feed.xml",
+      "maxItems": 50,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "twitch-example",
+    "sourceType": "twitch",
+    "name": "Monitored Twitch Creators",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "logins": ["xqc", "asmongold"],
+      "clientIdEnv": "TWITCH_CLIENT_ID",
+      "clientSecretEnv": "TWITCH_CLIENT_SECRET",
+      "minViewers": 1000
     }
   },
   {

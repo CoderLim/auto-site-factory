@@ -1,0 +1,59 @@
+name: Viral Discovery Cron
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Keep this lightweight enough for private-repo GitHub Actions free minutes.
+    # GitHub cron is UTC; run every two hours, offset from the main discovery job.
+    - cron: "43 */2 * * *"
+
+concurrency:
+  group: viral-discovery-cron
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SOURCE_TARGETS_FILE: config/viral-source-targets.json
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+      TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+      # Intentionally omit LLM_API_* here: this workflow is designed to stay $0.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require database
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+
+      - run: npm install
+      - run: npm run build -w @factory/shared
+      - run: npm run build -w @factory/database
+      - run: npm run build -w @factory/discovery
+      - run: npm run build -w @factory/worker
+
+      - name: Migrate database
+        run: node packages/database/dist/migrate.js
+
+      - name: Sync viral source targets
+        run: node apps/worker/dist/sync-targets.js
+
+      - name: Collect zero-cost public feeds
+        run: |
+          node apps/worker/dist/index.js --once --source=hn
+          node apps/worker/dist/index.js --once --source=rss
+          node apps/worker/dist/index.js --once --source=youtube
+
+      - name: Collect Twitch when free API credentials are configured
+        if: ${{ env.TWITCH_CLIENT_ID != '' && env.TWITCH_CLIENT_SECRET != '' }}
+        run: node apps/worker/dist/index.js --once --source=twitch
