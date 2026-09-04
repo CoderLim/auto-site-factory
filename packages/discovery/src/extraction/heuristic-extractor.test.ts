@@ -21,3 +21,26 @@ test("extracts a named item without swallowing the sentence", () => {
   assert.ok(entities.some((entity) => entity.name === "Blood Scythe"))
   assert.ok(!entities.some((entity) => entity.name.includes("completely broken")))
 })
+
+test("extracts an Omoggle-style novel product name from a creator title without an LLM", () => {
+  const entities = extractHeuristicEntities({
+    ...base,
+    sourceType: "youtube" as const,
+    sourceTargetId: "youtube-xqc-viral",
+    scope: "viral",
+    title: "xQc tries Omoggle for the first time"
+  })
+  assert.ok(entities.some((entity) => entity.name === "Omoggle"))
+})
+
+test("ignores a generic New prefix but keeps the novel entity", () => {
+  const entities = extractHeuristicEntities({
+    ...base,
+    sourceType: "youtube" as const,
+    sourceTargetId: "youtube-xqc-viral",
+    scope: "viral",
+    title: "New Omoggle update is everywhere"
+  })
+  assert.ok(entities.some((entity) => entity.name === "Omoggle"))
+  assert.ok(!entities.some((entity) => entity.name === "New"))
+})
