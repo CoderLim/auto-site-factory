@@ -33,13 +33,14 @@
     "sourceType": "rss",
     "name": "Looksmax.org Forum RSS",
     "scope": "viral",
-    "enabled": true,
+    "enabled": false,
     "config": {
       "sourceRole": "discovery",
       "feedUrl": "https://looksmax.org/forums/-/index.rss",
       "maxItems": 50,
       "historyLimit": 300,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "disabledReason": "HTTP 403 from GitHub-hosted runners; do not bypass site anti-bot controls"
     }
   },
   {
