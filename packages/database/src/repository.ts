@@ -20,6 +20,42 @@ function parseTarget(row: Record<string, unknown>): SourceTarget {
   }
 }
 
+const VIRAL_SOURCE_BONUS: Partial<Record<SignalSourceType, number>> = {
+  twitch: 8,
+  x: 8,
+  youtube: 6,
+  hn: 4,
+  reddit: 4,
+  rss: 2,
+  official_api: 2,
+  wiki: 1,
+  wiki_gg: 1,
+  sitemap: 1
+}
+
+export function calculateViralScore(input: {
+  mentionCount: number
+  sourceCount: number
+  sourceTypes: string[]
+  firstSeenAt: string
+}, now = new Date()): number {
+  const ageHours = Math.max(
+    1,
+    (now.getTime() - new Date(input.firstSeenAt).getTime()) / (60 * 60 * 1000)
+  )
+  const recency = ageHours <= 24 ? 15 : ageHours <= 72 ? 8 : ageHours <= 168 ? 3 : 0
+  const diversity = Math.min(3, Math.max(0, input.sourceCount - 1)) * 20
+  const repeatMentions = Math.min(15, Math.max(0, input.mentionCount - 1) * 3)
+  const velocity = Math.min(
+    20,
+    Math.max(0, ((input.mentionCount - 1) / ageHours) * 24 * 4)
+  )
+  const sourceBonus = [...new Set(input.sourceTypes)]
+    .reduce((sum, source) => sum + (VIRAL_SOURCE_BONUS[source as SignalSourceType] ?? 0), 0)
+
+  return Math.min(100, Math.round(recency + diversity + repeatMentions + velocity + sourceBonus))
+}
+
 export type DiscoveryCandidateRow = {
   id: string
   entityId: string
@@ -30,6 +66,7 @@ export type DiscoveryCandidateRow = {
   mentionCount: number
   sourceCount: number
   sourceTypes: string[]
+  viralScore: number
   firstSeenAt: string
   lastSeenAt: string
 }
@@ -73,21 +110,37 @@ export class DiscoveryRepository {
           [since.toISOString(), limit]
         )
 
-    return result.rows.map((row) => ({
-      id: String(row.id),
-      entityId: String(row.entity_id),
-      name: String(row.canonical_name),
-      entityType: String(row.entity_type),
-      scope: String(row.scope),
-      status: String(row.status),
-      mentionCount: Number(row.mention_count ?? 0),
-      sourceCount: Number(row.source_count ?? 0),
-      sourceTypes: Array.isArray(row.source_types)
+    const candidates = result.rows.map((row) => {
+      const sourceTypes = Array.isArray(row.source_types)
         ? row.source_types.map((item) => String(item))
-        : [],
-      firstSeenAt: new Date(String(row.first_seen_at)).toISOString(),
-      lastSeenAt: new Date(String(row.last_seen_at)).toISOString()
-    }))
+        : []
+      const mentionCount = Number(row.mention_count ?? 0)
+      const sourceCount = Number(row.source_count ?? 0)
+      const firstSeenAt = new Date(String(row.first_seen_at)).toISOString()
+      const candidate = {
+        id: String(row.id),
+        entityId: String(row.entity_id),
+        name: String(row.canonical_name),
+        entityType: String(row.entity_type),
+        scope: String(row.scope),
+        status: String(row.status),
+        mentionCount,
+        sourceCount,
+        sourceTypes,
+        firstSeenAt,
+        lastSeenAt: new Date(String(row.last_seen_at)).toISOString()
+      }
+
+      return {
+        ...candidate,
+        viralScore: calculateViralScore(candidate)
+      }
+    })
+
+    return candidates.sort((a, b) =>
+      b.viralScore - a.viralScore ||
+      new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime()
+    )
   }
 
   async listEnabledTargets(sourceType?: SignalSourceType): Promise<SourceTarget[]> {
