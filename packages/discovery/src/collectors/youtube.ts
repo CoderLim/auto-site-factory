@@ -1,5 +1,6 @@
 import type { Collector } from "@factory/shared"
-import { configNumber, configString, envFromConfig, makeSignal } from "./base.js"
+import { configBoolean, configNumber, configString, envFromConfig, makeSignal } from "./base.js"
+import { parseFeed } from "./rss.js"
 
 interface YouTubeChannel {
   id?: string
@@ -27,14 +28,85 @@ function laterIso(a: string, b: string): string {
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b
 }
 
+function cursorSeenIds(cursor: Record<string, unknown> | undefined): string[] {
+  const value = cursor?.seenIds
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string")
+}
+
+async function collectFromAtomFeed(
+  target: Parameters<Collector["collect"]>[0],
+  cursor: Parameters<Collector["collect"]>[1],
+  context: Parameters<Collector["collect"]>[2],
+  channelId: string,
+  feedUrl: string
+) {
+  const maxResults = Math.min(50, Math.max(1, configNumber(target.config, "maxResults", 25)))
+  const historyLimit = Math.min(500, Math.max(maxResults, configNumber(target.config, "historyLimit", 200)))
+  const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
+
+  const response = await context.fetch(feedUrl, {
+    headers: {
+      "User-Agent": "auto-site-factory/0.1 (+https://github.com/CoderLim/auto-site-factory)",
+      "Accept": "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5"
+    }
+  })
+  if (!response.ok) throw new Error(`YouTube Atom feed ${response.status}: ${feedUrl}`)
+
+  const entries = parseFeed(await response.text()).slice(0, maxResults)
+  const previousSeenIds = cursorSeenIds(cursor)
+  const seen = new Set(previousSeenIds)
+  const isFirstRun = !Array.isArray(cursor?.seenIds)
+
+  if (isFirstRun && baselineOnFirstRun) {
+    return {
+      signals: [],
+      nextCursor: {
+        channelId,
+        seenIds: entries.map((entry) => entry.id).slice(0, historyLimit)
+      }
+    }
+  }
+
+  const signals = entries
+    .filter((entry) => !seen.has(entry.id))
+    .map((entry) => makeSignal("youtube", target, entry.id, {
+      title: entry.title,
+      content: entry.content,
+      author: entry.author,
+      url: entry.link,
+      publishedAt: entry.publishedAt,
+      discoveredAt: context.now,
+      metadata: { channelId, feedUrl, transport: "atom" }
+    }))
+
+  return {
+    signals,
+    nextCursor: {
+      channelId,
+      seenIds: [...entries.map((entry) => entry.id), ...previousSeenIds].slice(0, historyLimit)
+    }
+  }
+}
+
 export const youtubeCollector: Collector = {
   type: "youtube",
   async collect(target, cursor, context) {
-    const apiKey = envFromConfig(target.config, "apiKeyEnv")
     const configuredChannelId = configString(target.config, "channelId")
     const handle = configString(target.config, "handle")
+    const configuredFeedUrl = configString(target.config, "feedUrl")
+    const apiKeyEnv = configString(target.config, "apiKeyEnv")
+
+    // Free mode: a channel ID is enough to consume YouTube's public Atom feed.
+    // Keep sourceType="youtube" so cross-platform source_count remains meaningful.
+    if (configuredFeedUrl || (configuredChannelId && !apiKeyEnv)) {
+      const feedUrl = configuredFeedUrl || `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(configuredChannelId)}`
+      return collectFromAtomFeed(target, cursor, context, configuredChannelId, feedUrl)
+    }
+
+    const apiKey = envFromConfig(target.config, "apiKeyEnv")
     if (!configuredChannelId && !handle) {
-      throw new Error("YouTube target requires channelId or handle")
+      throw new Error("YouTube target requires channelId, handle, or feedUrl")
     }
 
     const channelParams = new URLSearchParams({
@@ -90,7 +162,7 @@ export const youtubeCollector: Collector = {
         url: `https://www.youtube.com/watch?v=${videoId}`,
         publishedAt,
         discoveredAt: context.now,
-        metadata: { channelId, handle, uploadsPlaylistId }
+        metadata: { channelId, handle, uploadsPlaylistId, transport: "api" }
       })]
     })
 
