@@ -8,7 +8,7 @@
     "config": {
       "sourceRole": "discovery",
       "feed": "newstories",
-      "maxItems": 80,
+      "maxItems": 150,
       "historyLimit": 500,
       "baselineOnFirstRun": true,
       "minScore": 0
@@ -23,6 +23,20 @@
     "config": {
       "sourceRole": "discovery",
       "feedUrl": "https://www.producthunt.com/feed",
+      "maxItems": 50,
+      "historyLimit": 300,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "rss-looksmax-viral",
+    "sourceType": "rss",
+    "name": "Looksmax.org Forum RSS",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "feedUrl": "https://looksmax.org/forums/-/index.rss",
       "maxItems": 50,
       "historyLimit": 300,
       "baselineOnFirstRun": true
