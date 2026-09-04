@@ -7,9 +7,9 @@ on:
     paths:
       - ".github/workflows/viral-discovery-cron.yml"
   schedule:
-    # Keep this lightweight enough for private-repo GitHub Actions free minutes.
-    # GitHub cron is UTC; run every two hours, offset from the main discovery job.
-    - cron: "43 */2 * * *"
+    # GitHub cron is UTC. Every three hours is a better free-tier tradeoff:
+    # still early enough for viral SEO signals without burning Actions minutes.
+    - cron: "43 */3 * * *"
 
 concurrency:
   group: viral-discovery-cron
@@ -45,6 +45,8 @@ jobs:
       - run: npm run build -w @factory/database
       - run: npm run build -w @factory/discovery
       - run: npm run build -w @factory/worker
+      - name: Test discovery collectors
+        run: npm test -w @factory/discovery
 
       - name: Migrate database
         run: node packages/database/dist/migrate.js
