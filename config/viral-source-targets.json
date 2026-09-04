@@ -1,0 +1,46 @@
+[
+  {
+    "id": "hn-newstories-viral",
+    "sourceType": "hn",
+    "name": "Hacker News New Stories",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "feed": "newstories",
+      "maxItems": 80,
+      "historyLimit": 500,
+      "baselineOnFirstRun": true,
+      "minScore": 0
+    }
+  },
+  {
+    "id": "rss-producthunt-viral",
+    "sourceType": "rss",
+    "name": "Product Hunt RSS",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "feedUrl": "https://www.producthunt.com/feed",
+      "maxItems": 50,
+      "historyLimit": 300,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "twitch-viral-creators",
+    "sourceType": "twitch",
+    "name": "Viral Twitch Creators",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "sourceRole": "discovery",
+      "logins": ["xqc", "asmongold", "kaicenat", "clavicular"],
+      "clientIdEnv": "TWITCH_CLIENT_ID",
+      "clientSecretEnv": "TWITCH_CLIENT_SECRET",
+      "minViewers": 1000,
+      "historyLimit": 1000
+    }
+  }
+]
