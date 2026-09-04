@@ -23,8 +23,8 @@ export const hnCollector: Collector = {
   type: "hn",
   async collect(target, cursor, context) {
     const feed = String(target.config.feed ?? "newstories")
-    const maxItems = Math.min(100, Math.max(1, configNumber(target.config, "maxItems", 50)))
-    const historyLimit = Math.min(1000, Math.max(maxItems, configNumber(target.config, "historyLimit", 300)))
+    const maxItems = Math.min(300, Math.max(1, configNumber(target.config, "maxItems", 100)))
+    const historyLimit = Math.min(1000, Math.max(maxItems, configNumber(target.config, "historyLimit", 500)))
     const minScore = Math.max(0, configNumber(target.config, "minScore", 0))
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
     const titlePrefixes = configStringArray(target.config, "titlePrefixes").map((value) => value.toLowerCase())
