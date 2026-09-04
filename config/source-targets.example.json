@@ -49,6 +49,55 @@
     }
   },
   {
+    "id": "rss-youtube-example",
+    "sourceType": "rss",
+    "name": "YouTube Channel Atom Feed",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "feedUrl": "https://www.youtube.com/feeds/videos.xml?channel_id=YOUR_CHANNEL_ID",
+      "maxItems": 25,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "hn-example",
+    "sourceType": "hn",
+    "name": "Hacker News New Stories",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "feed": "newstories",
+      "maxItems": 80,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "rss-example",
+    "sourceType": "rss",
+    "name": "Public RSS or Atom Feed",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "feedUrl": "https://example.com/feed.xml",
+      "maxItems": 50,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "twitch-example",
+    "sourceType": "twitch",
+    "name": "Monitored Twitch Creators",
+    "scope": "viral",
+    "enabled": false,
+    "config": {
+      "logins": ["xqc", "asmongold"],
+      "clientIdEnv": "TWITCH_CLIENT_ID",
+      "clientSecretEnv": "TWITCH_CLIENT_SECRET",
+      "minViewers": 1000
+    }
+  },
+  {
     "id": "x-example",
     "sourceType": "x",
     "name": "Monitored X Account",
