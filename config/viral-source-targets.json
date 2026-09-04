@@ -29,6 +29,48 @@
     }
   },
   {
+    "id": "youtube-xqc-viral",
+    "sourceType": "youtube",
+    "name": "xQc YouTube",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "channelId": "UCmDTrq0LNgPodDOFZiSbsww",
+      "maxResults": 25,
+      "historyLimit": 200,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "youtube-asmongold-viral",
+    "sourceType": "youtube",
+    "name": "Asmongold TV YouTube",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "channelId": "UCQeRaTukNYft1_6AZPACnog",
+      "maxResults": 25,
+      "historyLimit": 200,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
+    "id": "youtube-kaicenat-live-viral",
+    "sourceType": "youtube",
+    "name": "Kai Cenat Live YouTube",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "channelId": "UCvCfpQXRXdJdL07pzTIA6Cw",
+      "maxResults": 25,
+      "historyLimit": 200,
+      "baselineOnFirstRun": true
+    }
+  },
+  {
     "id": "twitch-viral-creators",
     "sourceType": "twitch",
     "name": "Viral Twitch Creators",
