@@ -52,6 +52,7 @@ jobs:
         run: |
           node apps/worker/dist/index.js --once --source=hn
           node apps/worker/dist/index.js --once --source=rss
+          node apps/worker/dist/index.js --once --source=youtube
 
       - name: Collect Twitch when free API credentials are configured
         if: ${{ env.TWITCH_CLIENT_ID != '' && env.TWITCH_CLIENT_SECRET != '' }}
