@@ -2,6 +2,10 @@ name: Viral Discovery Cron
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/viral-discovery-cron.yml"
   schedule:
     # Keep this lightweight enough for private-repo GitHub Actions free minutes.
     # GitHub cron is UTC; run every two hours, offset from the main discovery job.
