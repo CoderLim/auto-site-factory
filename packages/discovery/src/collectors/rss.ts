@@ -1,0 +1,131 @@
+import type { Collector } from "@factory/shared"
+import { configBoolean, configNumber, makeSignal, requireConfigString } from "./base.js"
+
+type FeedEntry = {
+  id: string
+  title: string
+  link?: string
+  content?: string
+  author?: string
+  publishedAt?: Date
+}
+
+function decodeXml(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;|&apos;/g, "'")
+}
+
+function stripTags(value: string): string {
+  return decodeXml(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+}
+
+function firstTag(block: string, names: string[]): string | undefined {
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const match = block.match(new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${escaped}>`, "i"))
+    if (match?.[1]) return decodeXml(match[1]).trim()
+  }
+  return undefined
+}
+
+function atomLink(block: string): string | undefined {
+  const alternate = block.match(/<link\b[^>]*rel=["']alternate["'][^>]*href=["']([^"']+)["'][^>]*\/?\s*>/i)
+    ?? block.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*\/?\s*>/i)
+  if (alternate?.[1]) return decodeXml(alternate[1]).trim()
+  const rssLink = firstTag(block, ["link"])
+  return rssLink?.trim()
+}
+
+function parseDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
+function parseFeed(xml: string): FeedEntry[] {
+  const blocks = [...xml.matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)]
+  return blocks.flatMap((match) => {
+    const block = match[2] ?? ""
+    const title = stripTags(firstTag(block, ["title"]) ?? "")
+    if (!title) return []
+
+    const link = atomLink(block)
+    const id = stripTags(firstTag(block, ["guid", "id", "yt:videoId"]) ?? link ?? title)
+    if (!id) return []
+
+    const rawContent = firstTag(block, ["content:encoded", "content", "description", "summary"])
+    const author = stripTags(firstTag(block, ["dc:creator", "name", "author"]) ?? "") || undefined
+    const publishedAt = parseDate(firstTag(block, ["pubDate", "published", "updated", "dc:date"]))
+
+    return [{
+      id,
+      title,
+      link,
+      content: rawContent ? stripTags(rawContent).slice(0, 4000) : undefined,
+      author,
+      publishedAt
+    }]
+  })
+}
+
+function cursorSeenIds(cursor: Record<string, unknown> | undefined): string[] {
+  const value = cursor?.seenIds
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string")
+}
+
+export const rssCollector: Collector = {
+  type: "rss",
+  async collect(target, cursor, context) {
+    const feedUrl = requireConfigString(target.config, "feedUrl")
+    const maxItems = Math.min(100, Math.max(1, configNumber(target.config, "maxItems", 50)))
+    const historyLimit = Math.min(1000, Math.max(maxItems, configNumber(target.config, "historyLimit", 300)))
+    const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
+
+    const response = await context.fetch(feedUrl, {
+      headers: {
+        "User-Agent": "auto-site-factory/0.1 (+https://github.com/CoderLim/auto-site-factory)",
+        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5"
+      }
+    })
+    if (!response.ok) throw new Error(`RSS ${response.status}: ${feedUrl}`)
+    const xml = await response.text()
+    const entries = parseFeed(xml).slice(0, maxItems)
+    const previousSeenIds = cursorSeenIds(cursor)
+    const seen = new Set(previousSeenIds)
+    const isFirstRun = !Array.isArray(cursor?.seenIds)
+
+    if (isFirstRun && baselineOnFirstRun) {
+      return {
+        signals: [],
+        nextCursor: { seenIds: entries.map((entry) => entry.id).slice(0, historyLimit) }
+      }
+    }
+
+    const signals = entries
+      .filter((entry) => !seen.has(entry.id))
+      .map((entry) => makeSignal("rss", target, entry.id, {
+        title: entry.title,
+        content: entry.content,
+        author: entry.author,
+        url: entry.link,
+        publishedAt: entry.publishedAt,
+        discoveredAt: context.now,
+        metadata: { feedUrl }
+      }))
+
+    return {
+      signals,
+      nextCursor: {
+        seenIds: [...entries.map((entry) => entry.id), ...previousSeenIds].slice(0, historyLimit)
+      }
+    }
+  }
+}
+
+export { parseFeed }
