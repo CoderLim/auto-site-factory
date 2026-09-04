@@ -2,7 +2,18 @@ import { Database, DiscoveryRepository, KeywordRepository, SitemapRepository } f
 import { generateKeywordCandidate, getCollector, processPendingSignals } from "@factory/discovery"
 import { newId, type SignalSourceType, type SourceTarget } from "@factory/shared"
 
-const POLLING_SOURCES = new Set<SignalSourceType>(["official_api", "wiki", "wiki_gg", "reddit", "youtube", "x", "sitemap"])
+const POLLING_SOURCES = new Set<SignalSourceType>([
+  "official_api",
+  "wiki",
+  "wiki_gg",
+  "reddit",
+  "youtube",
+  "twitch",
+  "hn",
+  "rss",
+  "x",
+  "sitemap"
+])
 
 function numberFromCursor(cursor: Record<string, unknown> | undefined, key: string): number | undefined {
   const value = cursor?.[key]
