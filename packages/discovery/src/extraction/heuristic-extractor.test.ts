@@ -45,6 +45,27 @@ test("ignores a generic New prefix but keeps the novel entity", () => {
   assert.ok(!entities.some((entity) => entity.name === "New"))
 })
 
+test("does not turn title-case YouTube prose into fake entities", () => {
+  const noisyTitles = [
+    "Save Yourself In The Biggest Survival Challenge",
+    "Buy The Fastest SSDs Before Prices Go Up",
+    "Ultimate Analysis And Breakdown Of The Episode",
+    "Moderate Health Issues After The Stream"
+  ]
+
+  for (const title of noisyTitles) {
+    const entities = extractHeuristicEntities({
+      ...base,
+      sourceType: "youtube" as const,
+      sourceTargetId: "youtube-viral",
+      scope: "viral",
+      title
+    })
+    assert.ok(!entities.some((entity) => entity.name === title))
+    assert.ok(!entities.some((entity) => /^(Save Yourself In|Buy The Fastest SSDs|Ultimate Analysis And Breakdown|Moderate Health Issues)$/.test(entity.name)))
+  }
+})
+
 test("does not classify every viral entity from unrelated title words", () => {
   const entities = extractHeuristicEntities({
     ...base,
