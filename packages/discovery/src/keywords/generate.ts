@@ -28,6 +28,12 @@ const GENERIC_SINGLE_WORDS = new Set([
 const OPERATIONAL_SCOPES = new Set(["viral"])
 const GENERIC_SCOPES = new Set(["ai", "ai-tools", "tools", "web-games", "steam-games", ...OPERATIONAL_SCOPES])
 const CONTEXTUAL_ENTITY_TYPES = new Set(["ITEM", "EVENT", "MAP", "MODE", "OTHER"])
+const VIRAL_FUNCTION_WORDS = new Set([
+  "a", "an", "and", "as", "at", "for", "from", "his", "her", "in", "into", "my",
+  "of", "off", "on", "or", "our", "the", "their", "this", "to", "with", "your", "yourself"
+])
+const VIRAL_GENERIC_START = /^(?:save|buy|grow|watch|learn|make|build|how|why|what|when|where|who|ultimate|moderate|best|new|official|latest)\b/i
+const VIRAL_GENERIC_END = /\b(?:analysis|breakdown|episode|issues?|dreams?|story|video|stream|challenge|reaction|review|guide|news|update|bench|benchmark)\b$/i
 
 function safeDecode(value: string): string {
   try { return decodeURIComponent(value) } catch { return value }
@@ -74,6 +80,19 @@ function scoreKeyword(keyword: string, rawName: string, entityType: string, scop
   if (normalized.length < 4) { score -= 30; reasons.push("too_short") }
   if (normalized.length > 80 || tokens.length > 10) { score -= 25; reasons.push("too_long") }
   if (/v?\d+\.\d+/.test(normalized)) { score += 5; reasons.push("version_marker") }
+
+  if (scope === "viral") {
+    if (tokens.length >= 3) { score -= 20; reasons.push("viral_phrase_too_broad") }
+    if (tokens.some((token) => VIRAL_FUNCTION_WORDS.has(token))) {
+      score -= 25; reasons.push("viral_prose_function_words")
+    }
+    if (VIRAL_GENERIC_START.test(normalized)) {
+      score -= 25; reasons.push("viral_generic_lead")
+    }
+    if (VIRAL_GENERIC_END.test(normalized)) {
+      score -= 25; reasons.push("viral_generic_tail")
+    }
+  }
 
   return { score: Math.max(0, Math.min(100, score)), reasons }
 }
