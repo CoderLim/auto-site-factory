@@ -54,3 +54,22 @@ test("does not reward stale domain entity types inside viral scope", () => {
   assert.ok(!(result?.generationReasons ?? []).includes("named_entity_type"))
   assert.equal(result?.status, "low_searchability")
 })
+
+test("downgrades prose-like viral phrases from creator titles", () => {
+  const noisy = [
+    "Save Yourself In",
+    "Buy The Fastest SSDs",
+    "Grow Cars",
+    "Ultimate Analysis And Breakdown",
+    "Off The Rails",
+    "His Greatest Episode",
+    "Moderate Health Issues",
+    "Moo Deng Dreams",
+    "AWS-bench"
+  ]
+
+  for (const name of noisy) {
+    const result = generateKeywordCandidate(seed(name, "OTHER", "viral"))
+    assert.equal(result?.status, "low_searchability", name)
+  }
+})
