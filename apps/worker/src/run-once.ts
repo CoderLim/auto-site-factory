@@ -70,6 +70,12 @@ async function generateMissingKeywords(repository: KeywordRepository): Promise<{
   let generated = 0
   let lowSearchability = 0
 
+  // Older builds accidentally treated the operational `viral` scope as semantic context
+  // and produced terms such as "viral AWS". Remove only those old scope-context rows;
+  // the normal missing-seed pass below immediately regenerates clean entity-name keywords.
+  const removedInvalid = await repository.deleteInvalidOperationalScopeKeywords(["viral"])
+  if (removedInvalid > 0) console.log(`[keywords] removed ${removedInvalid} invalid operational-scope candidates`)
+
   while (true) {
     const seeds = await repository.listMissingSeeds(1000)
     if (seeds.length === 0) break
