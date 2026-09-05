@@ -7,13 +7,18 @@ const STOP = new Set([
 const INTENT_SUFFIX = /\b(?:guide|wiki|codes?|tier list|release date|download|apk|price|review|gameplay|trailer|how to|get|fast|today|update|patch notes?)\b/gi
 
 function classify(name: string, signal: StoredSignal): EntityType {
-  const lower = `${name} ${signal.title ?? ""}`.toLowerCase()
+  const lower = name.toLowerCase()
+
+  // Global viral discovery is intentionally conservative: the surrounding HN/YouTube/RSS
+  // title must not leak words such as "world" or "map" into every extracted entity.
   if (/\b(model|llm|gpt|gemini|claude|qwen|llama)\b/.test(lower)) return "AI_MODEL"
+  if (/\b(ai|tool|generator|editor|assistant)\b/.test(lower)) return "TOOL"
+  if (signal.scope === "viral") return "OTHER"
+
   if (/\b(sword|katana|scythe|gun|weapon|armor|item|blade|potion)\b/.test(lower)) return "ITEM"
   if (/\b(map|island|city|zone|world)\b/.test(lower)) return "MAP"
   if (/\b(mode|gamemode)\b/.test(lower)) return "MODE"
   if (/\b(event|festival|season)\b/.test(lower)) return "EVENT"
-  if (/\b(ai|tool|generator|editor|assistant)\b/.test(lower)) return "TOOL"
   return "OTHER"
 }
 
