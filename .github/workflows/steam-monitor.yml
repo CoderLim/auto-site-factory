@@ -7,7 +7,10 @@ on:
     paths:
       - ".github/workflows/steam-monitor.yml"
       - "apps/worker/src/steam-monitor.ts"
+      - "apps/worker/src/steam-radar.ts"
+      - "apps/worker/src/steam-radar-runner.ts"
       - "packages/database/src/steam-repository.ts"
+      - "packages/discovery/src/steam/**"
       - "migrations/003_steam_lifecycle.sql"
       - "migrations/005_steam_followers.sql"
       - "migrations/006_steam_opportunities.sql"
@@ -57,6 +60,9 @@ jobs:
 
       - name: Run Steam lifecycle monitor
         run: node apps/worker/dist/steam-monitor.js
+
+      - name: Promote high-priority Steam opportunities
+        run: node apps/worker/dist/steam-radar-runner.js
 
       - name: Log recent Steam opportunities
         run: |
