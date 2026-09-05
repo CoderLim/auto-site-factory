@@ -44,3 +44,15 @@ test("ignores a generic New prefix but keeps the novel entity", () => {
   assert.ok(entities.some((entity) => entity.name === "Omoggle"))
   assert.ok(!entities.some((entity) => entity.name === "New"))
 })
+
+test("does not classify every viral entity from unrelated title words", () => {
+  const entities = extractHeuristicEntities({
+    ...base,
+    sourceType: "hn" as const,
+    sourceTargetId: "hn-newstories-viral",
+    scope: "viral",
+    title: "AWS benchmark reveals an Invisible World of machine evolution"
+  })
+  const aws = entities.find((entity) => entity.name === "AWS")
+  assert.equal(aws?.type, "OTHER")
+})
