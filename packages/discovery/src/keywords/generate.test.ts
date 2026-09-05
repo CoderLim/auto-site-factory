@@ -40,3 +40,17 @@ test("adds game scope context for generic wiki entities", () => {
   assert.equal(result?.generationKind, "scope_context")
   assert.equal(result?.status, "pending_validation")
 })
+
+test("never prefixes operational viral scope to keywords", () => {
+  const result = generateKeywordCandidate(seed("Machine Evolution", "MAP", "viral"))
+  assert.equal(result?.keyword, "Machine Evolution")
+  assert.equal(result?.generationKind, "entity_name")
+  assert.ok(!(result?.generationReasons ?? []).includes("scope_context_added"))
+})
+
+test("does not reward stale domain entity types inside viral scope", () => {
+  const result = generateKeywordCandidate(seed("AWS", "MAP", "viral"))
+  assert.equal(result?.keyword, "AWS")
+  assert.ok(!(result?.generationReasons ?? []).includes("named_entity_type"))
+  assert.equal(result?.status, "low_searchability")
+})
