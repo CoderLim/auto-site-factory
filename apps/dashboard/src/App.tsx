@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react"
+import AppChartsPanel from "./AppChartsPanel"
 import {
   SOURCE_TYPE_OPTIONS,
   api,
@@ -12,13 +13,17 @@ import {
   type SteamGame
 } from "./api"
 
-type Tab = "keywords" | "discover" | "steam" | "sites" | "runs" | "anomalies"
+type Tab = "keywords" | "discover" | "steam" | "appcharts" | "sites" | "runs" | "anomalies"
 const ranges = [
   { value: "1d", label: "最近 1 天" },
   { value: "7d", label: "最近 7 天" },
   { value: "30d", label: "最近 30 天" }
 ]
 const steamRanges = [...ranges, { value: "90d", label: "最近 90 天" }]
+
+function tabForPath(): Tab {
+  return window.location.pathname === "/discovery/apps" ? "appcharts" : "keywords"
+}
 
 function formatTime(value?: string) {
   if (!value) return "—"
@@ -106,7 +111,7 @@ async function writeClipboard(text: string): Promise<void> {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("keywords")
+  const [tab, setTab] = useState<Tab>(() => tabForPath())
   const [range, setRange] = useState("1d")
   const [sourceType, setSourceType] = useState("")
   const [keywordStatus, setKeywordStatus] = useState("pending_validation")
@@ -128,6 +133,12 @@ export default function App() {
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [token, setToken] = useState(() => getDashboardToken())
+
+  const selectTab = (nextTab: Tab) => {
+    setTab(nextTab)
+    const nextPath = nextTab === "appcharts" ? "/discovery/apps" : "/"
+    if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath)
+  }
 
   const refreshCore = async () => {
     const [targetResult, runResult, anomalyResult] = await Promise.all([api.targets(), api.runs(), api.anomalies()])
@@ -180,6 +191,12 @@ export default function App() {
 
   useEffect(() => {
     void refreshAll()
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => setTab(tabForPath())
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
   }, [])
 
   useEffect(() => {
@@ -299,26 +316,29 @@ export default function App() {
   const pageTitle = tab === "keywords" ? "新增关键词"
     : tab === "discover" ? "发现候选"
       : tab === "steam" ? "Steam 游戏"
-        : tab === "sites" ? "Sitemap 管理"
-          : tab === "runs" ? "运行记录"
-            : "异常中心"
+        : tab === "appcharts" ? "App Charts"
+          : tab === "sites" ? "Sitemap 管理"
+            : tab === "runs" ? "运行记录"
+              : "异常中心"
 
   const eyebrow = tab === "keywords" ? "LAYER 2 / KEYWORDS"
     : tab === "discover" ? "LAYER 1 / DISCOVERY"
       : tab === "steam" ? "DISCOVERY / STEAM"
-        : "DISCOVERY / SITEMAP"
+        : tab === "appcharts" ? "DISCOVERY / APP STORE"
+          : "DISCOVERY / SITEMAP"
 
   return (
     <div className="shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">ASF</span><div><strong>Auto Site Factory</strong><small>Discovery</small></div></div>
         <nav>
-          <button className={tab === "keywords" ? "active" : ""} onClick={() => setTab("keywords")}>新增关键词</button>
-          <button className={tab === "discover" ? "active" : ""} onClick={() => setTab("discover")}>发现候选</button>
-          <button className={tab === "steam" ? "active" : ""} onClick={() => setTab("steam")}>Steam 游戏</button>
-          <button className={tab === "sites" ? "active" : ""} onClick={() => setTab("sites")}>Sitemap 管理</button>
-          <button className={tab === "runs" ? "active" : ""} onClick={() => setTab("runs")}>运行记录</button>
-          <button className={tab === "anomalies" ? "active" : ""} onClick={() => setTab("anomalies")}>异常中心 {anomalies.length > 0 && <span className="badge">{anomalies.length}</span>}</button>
+          <button className={tab === "keywords" ? "active" : ""} onClick={() => selectTab("keywords")}>新增关键词</button>
+          <button className={tab === "discover" ? "active" : ""} onClick={() => selectTab("discover")}>发现候选</button>
+          <button className={tab === "steam" ? "active" : ""} onClick={() => selectTab("steam")}>Steam 游戏</button>
+          <button className={tab === "appcharts" ? "active" : ""} onClick={() => selectTab("appcharts")}>App Charts</button>
+          <button className={tab === "sites" ? "active" : ""} onClick={() => selectTab("sites")}>Sitemap 管理</button>
+          <button className={tab === "runs" ? "active" : ""} onClick={() => selectTab("runs")}>运行记录</button>
+          <button className={tab === "anomalies" ? "active" : ""} onClick={() => selectTab("anomalies")}>异常中心 {anomalies.length > 0 && <span className="badge">{anomalies.length}</span>}</button>
         </nav>
       </aside>
 
@@ -330,7 +350,7 @@ export default function App() {
               <input type="password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="Dashboard token（如已配置）" />
               <button onClick={() => void connect()}>连接</button>
             </div>
-            {tab !== "steam" && <button className="primary" onClick={runNow} disabled={busy}>{busy ? "启动中…" : "立即抓取"}</button>}
+            {tab !== "steam" && tab !== "appcharts" && <button className="primary" onClick={runNow} disabled={busy}>{busy ? "启动中…" : "立即抓取"}</button>}
           </div>
         </header>
 
@@ -485,6 +505,8 @@ export default function App() {
               {!steamLoading && steamGames.length === 0 && <div className="empty">还没有符合条件的新 Steam 游戏。初始化基线默认不会混进新发现列表。</div>}
             </div>
           </section>
+        ) : tab === "appcharts" ? (
+          <AppChartsPanel />
         ) : tab === "sites" ? (
           <section className="sites-grid">
             <form className="card add-site" onSubmit={addTarget}><h2>添加 Sitemap</h2><input name="id" placeholder="target id，例如 sitemap-poki" /><input name="name" placeholder="站点名称" /><input name="scope" placeholder="scope，例如 games" /><input name="sitemapUrl" placeholder="https://example.com/sitemap.xml" /><button className="primary" disabled={busy}>添加并启用</button></form>
