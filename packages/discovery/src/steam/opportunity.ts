@@ -46,8 +46,8 @@ export function scoreSteamOpportunity(input: SteamOpportunityInput, now = new Da
   if (input.hasPlaytest) { score += 15; reasons.push("playtest_live") }
   if (input.hasDemo) { score += 5; reasons.push("demo_live") }
 
+  const releaseInDays = daysUntil(input.releaseDate, now)
   if (input.storeStatus === "coming_soon") {
-    const releaseInDays = daysUntil(input.releaseDate, now)
     if (releaseInDays != null && releaseInDays >= 0 && releaseInDays <= 14) {
       score += 15; reasons.push("release_within_14d")
     } else if (releaseInDays != null && releaseInDays <= 30) {
@@ -58,11 +58,16 @@ export function scoreSteamOpportunity(input: SteamOpportunityInput, now = new Da
   }
 
   if (input.storeStatus === "released") {
-    const ccu = input.ccuCurrent ?? 0
-    if (ccu >= 5_000) { score += 25; reasons.push("ccu_5k_plus") }
-    else if (ccu >= 1_000) { score += 15; reasons.push("ccu_1k_plus") }
-    else if (ccu >= 200) { score += 8; reasons.push("ccu_200_plus") }
-    if ((input.ccu24hGrowthPct ?? 0) >= 100) { score += 10; reasons.push("ccu_24h_doubled") }
+    const releaseAgeDays = releaseInDays == null ? undefined : Math.max(0, -releaseInDays)
+    const isFreshRelease = releaseAgeDays != null && releaseAgeDays <= 30
+    const hasFreshSpike = input.opportunityReason === "ccu_spike" || input.opportunityReason === "follower_spike"
+    if (isFreshRelease || hasFreshSpike) {
+      const ccu = input.ccuCurrent ?? 0
+      if (ccu >= 5_000) { score += 25; reasons.push("ccu_5k_plus") }
+      else if (ccu >= 1_000) { score += 15; reasons.push("ccu_1k_plus") }
+      else if (ccu >= 200) { score += 8; reasons.push("ccu_200_plus") }
+      if ((input.ccu24hGrowthPct ?? 0) >= 100) { score += 10; reasons.push("ccu_24h_doubled") }
+    }
   }
 
   if (input.opportunityReason === "follower_spike") { score += 15; reasons.push("follower_spike") }
