@@ -47,3 +47,19 @@ test("promotes strong follower velocity even before release", () => {
   assert.equal(result.priority, "P0")
   assert.equal(shouldPromoteSteamOpportunity(result), true)
 })
+
+test("does not reclassify an established popular game as P0 without a fresh spike", () => {
+  const result = scoreSteamOpportunity({
+    followersCurrent: 574_605,
+    storeStatus: "released",
+    releaseDate: "2024-07-25",
+    hasDemo: true,
+    hasPlaytest: false,
+    ccuCurrent: 20_034,
+    opportunityReason: "released"
+  }, new Date("2026-09-02T00:00:00Z"))
+
+  assert.equal(result.priority, "P2")
+  assert.equal(result.score, 45)
+  assert.equal(shouldPromoteSteamOpportunity(result), false)
+})
