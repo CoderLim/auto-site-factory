@@ -9,16 +9,39 @@ on:
       - "apps/worker/src/app-chart-monitor.ts"
       - "packages/database/src/app-chart-repository.ts"
       - "migrations/008_app_charts.sql"
+  pull_request:
+    paths:
+      - ".github/workflows/app-charts.yml"
+      - "apps/worker/src/app-chart-monitor.ts"
+      - "packages/database/src/app-chart-repository.ts"
+      - "packages/database/src/index.ts"
+      - "apps/api/src/index.ts"
+      - "apps/dashboard/src/**"
+      - "migrations/008_app_charts.sql"
+      - "package.json"
   schedule:
     # getcharts.app refreshes iOS rankings every six hours. Offset to avoid top-of-hour contention.
     - cron: "17 */6 * * *"
 
 concurrency:
-  group: app-store-charts-monitor
+  group: app-store-charts-monitor-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  build-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+
   monitor:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
