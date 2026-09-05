@@ -3,7 +3,7 @@ import type { Database } from "./client.js"
 export type SteamStoreStatus = "unknown" | "coming_soon" | "released" | "unavailable"
 export type SteamCcuSource = "game" | "demo" | "playtest"
 export type SteamFollowerSource = "store_dlc" | "community_xml"
-export type SteamOpportunityReason = "new_app" | "released" | "demo" | "playtest" | "ccu_spike" | "follower_spike"
+export type SteamOpportunityReason = "new_app" | "released" | "demo" | "playtest" | "ccu_spike" | "follower_spike" | "high_followers"
 
 export interface SteamAppListItem {
   appid: number
@@ -284,9 +284,27 @@ export class SteamRepository {
        FROM steam_games
        WHERE app_type = 'game'
          AND store_status <> 'unavailable'
-         AND (is_baseline = FALSE OR opportunity_at >= NOW() - INTERVAL '30 days')
+         AND (
+           is_baseline = FALSE
+           OR opportunity_at >= NOW() - INTERVAL '30 days'
+           OR has_playtest = TRUE
+           OR has_demo = TRUE
+           OR store_status = 'coming_soon'
+           OR (release_date IS NOT NULL AND release_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 90)
+         )
          AND (last_follower_checked_at IS NULL OR last_follower_checked_at < NOW() - INTERVAL '6 hours')
-       ORDER BY opportunity_at DESC NULLS LAST, last_follower_checked_at ASC NULLS FIRST, first_observed_at DESC
+       ORDER BY
+         CASE
+           WHEN opportunity_at >= NOW() - INTERVAL '30 days' THEN 0
+           WHEN has_playtest = TRUE THEN 1
+           WHEN store_status = 'coming_soon' AND release_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 90 THEN 2
+           WHEN store_status = 'coming_soon' THEN 3
+           WHEN has_demo = TRUE THEN 4
+           ELSE 5
+         END,
+         last_follower_checked_at ASC NULLS FIRST,
+         opportunity_at DESC NULLS LAST,
+         first_observed_at DESC
        LIMIT $1`,
       [limit]
     )
@@ -305,10 +323,12 @@ export class SteamRepository {
        SET followers_current = $2,
            followers_source = $3,
            opportunity_at = CASE
+             WHEN g.followers_current IS NULL AND $2 >= 20000 THEN NOW()
              WHEN previous.followers > 0 AND $2 - previous.followers >= 50 AND (($2 - previous.followers)::numeric / previous.followers::numeric) >= 0.5 THEN NOW()
              ELSE g.opportunity_at
            END,
            opportunity_reason = CASE
+             WHEN g.followers_current IS NULL AND $2 >= 20000 THEN 'high_followers'
              WHEN previous.followers > 0 AND $2 - previous.followers >= 50 AND (($2 - previous.followers)::numeric / previous.followers::numeric) >= 0.5 THEN 'follower_spike'
              ELSE g.opportunity_reason
            END,
