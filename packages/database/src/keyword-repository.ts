@@ -34,6 +34,19 @@ export type KeywordCandidateRow = KeywordCandidateInput & {
 export class KeywordRepository {
   constructor(private readonly db: Database) {}
 
+  async deleteInvalidOperationalScopeKeywords(scopes: string[] = ["viral"]): Promise<number> {
+    if (scopes.length === 0) return 0
+    const result = await this.db.query(
+      `DELETE FROM keyword_candidates kc
+       USING entities e
+       WHERE kc.entity_id = e.id
+         AND e.scope = ANY($1::TEXT[])
+         AND kc.generation_kind = 'scope_context'`,
+      [scopes]
+    )
+    return result.rowCount ?? 0
+  }
+
   async listMissingSeeds(limit = 1000): Promise<KeywordSeedRow[]> {
     const result = await this.db.query(
       `SELECT e.id AS entity_id, e.canonical_name, e.entity_type, e.scope,
