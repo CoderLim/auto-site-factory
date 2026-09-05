@@ -24,7 +24,9 @@ const GENERIC_SINGLE_WORDS = new Set([
   "sample", "space", "test", "tool", "untitled"
 ])
 
-const GENERIC_SCOPES = new Set(["ai", "ai-tools", "tools", "web-games", "steam-games"])
+// These scopes describe where/how an entity was discovered, not semantic keyword context.
+const OPERATIONAL_SCOPES = new Set(["viral"])
+const GENERIC_SCOPES = new Set(["ai", "ai-tools", "tools", "web-games", "steam-games", ...OPERATIONAL_SCOPES])
 const CONTEXTUAL_ENTITY_TYPES = new Set(["ITEM", "EVENT", "MAP", "MODE", "OTHER"])
 
 function safeDecode(value: string): string {
@@ -51,14 +53,14 @@ function hasScopePrefix(keyword: string, scope: string): boolean {
   return Boolean(b) && (a === b || a.startsWith(`${b} `) || a.endsWith(` ${b}`))
 }
 
-function scoreKeyword(keyword: string, rawName: string, entityType: string) {
+function scoreKeyword(keyword: string, rawName: string, entityType: string, scope: string) {
   const reasons: string[] = []
   const normalized = normalizeKeyword(keyword)
   const tokens = normalized.split(" ").filter(Boolean)
   let score = 60
 
   if (tokens.length >= 2 && tokens.length <= 6) { score += 15; reasons.push("natural_token_count") }
-  if (["AI_MODEL", "TOOL", "GAME", "ITEM", "EVENT", "MAP", "MODE"].includes(entityType)) {
+  if (!OPERATIONAL_SCOPES.has(scope) && ["AI_MODEL", "TOOL", "GAME", "ITEM", "EVENT", "MAP", "MODE"].includes(entityType)) {
     score += 5; reasons.push("named_entity_type")
   }
   if (tokens.length === 1) { score -= 10; reasons.push("single_token") }
@@ -84,7 +86,7 @@ export function generateKeywordCandidate(seed: KeywordSeed): GeneratedKeywordCan
   const normalizedKeyword = normalizeKeyword(keyword)
   if (!normalizedKeyword) return undefined
 
-  const scored = scoreKeyword(keyword, seed.name, seed.entityType)
+  const scored = scoreKeyword(keyword, seed.name, seed.entityType, seed.scope)
   if (addScope) { scored.score = Math.min(100, scored.score + 10); scored.reasons.push("scope_context_added") }
 
   return {
