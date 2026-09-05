@@ -6,6 +6,10 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/viral-discovery-cron.yml"
+      - "packages/discovery/**"
+      - "packages/database/**"
+      - "apps/worker/**"
+      - "config/viral-source-targets.json"
   schedule:
     # GitHub cron is UTC. Every three hours is a better free-tier tradeoff:
     # still early enough for viral SEO signals without burning Actions minutes.
