@@ -43,10 +43,13 @@ export function scoreSteamOpportunity(input: SteamOpportunityInput, now = new Da
   else if (followerDelta >= 500) { score += 8; reasons.push("followers_7d_plus_500") }
 
   if ((input.followers7dGrowthPct ?? 0) >= 50) { score += 10; reasons.push("followers_7d_growth_50pct") }
-  if (input.hasPlaytest) { score += 15; reasons.push("playtest_live") }
-  if (input.hasDemo) { score += 5; reasons.push("demo_live") }
 
   const releaseInDays = daysUntil(input.releaseDate, now)
+  if (input.storeStatus !== "released") {
+    if (input.hasPlaytest) { score += 15; reasons.push("playtest_live") }
+    if (input.hasDemo) { score += 5; reasons.push("demo_live") }
+  }
+
   if (input.storeStatus === "coming_soon") {
     if (releaseInDays != null && releaseInDays >= 0 && releaseInDays <= 14) {
       score += 15; reasons.push("release_within_14d")
