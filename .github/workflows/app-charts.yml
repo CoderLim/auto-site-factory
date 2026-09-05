@@ -8,6 +8,7 @@ on:
       - ".github/workflows/app-charts.yml"
       - "apps/worker/src/app-chart-monitor.ts"
       - "packages/database/src/app-chart-repository.ts"
+      - "functions/api/app-charts.js"
       - "migrations/008_app_charts.sql"
   pull_request:
     paths:
@@ -17,10 +18,11 @@ on:
       - "packages/database/src/index.ts"
       - "apps/api/src/index.ts"
       - "apps/dashboard/src/**"
+      - "functions/api/app-charts.js"
       - "migrations/008_app_charts.sql"
       - "package.json"
   schedule:
-    # getcharts.app refreshes iOS rankings every six hours. Offset to avoid top-of-hour contention.
+    # Apple chart snapshots every six hours, offset from the top of the hour.
     - cron: "17 */6 * * *"
 
 concurrency:
@@ -39,6 +41,8 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run build
+      - name: Build Cloudflare Pages Function
+        run: npx --yes wrangler@4.115.0 pages functions build functions --outfile=/tmp/pages-worker.js --compatibility-date=2026-08-12 --compatibility-flags=nodejs_compat
 
   monitor:
     if: github.event_name != 'pull_request'
