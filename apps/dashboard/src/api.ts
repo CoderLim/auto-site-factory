@@ -80,6 +80,37 @@ export type SteamGame = {
   lastCcuCheckedAt?: string
 }
 
+export type AppChartEntry = {
+  appId: string
+  rank: number
+  previousRank?: number
+  rank6hDelta?: number
+  rank24hAgo?: number
+  rank24hDelta?: number
+  name: string
+  artist?: string
+  iconUrl?: string
+  storeUrl?: string
+  primaryGenreName?: string
+  releaseDate?: string
+  ratingCount?: number
+  averageRating?: number
+  firstSeenAt: string
+  lastSeenAt: string
+  isBaseline: boolean
+  isNewApp: boolean
+  newTerms: string[]
+  capturedAt: string
+}
+
+export type AppChartNewTerm = {
+  term: string
+  displayTerm: string
+  firstSeenAt: string
+  firstAppId?: string
+  appName?: string
+}
+
 export type SitemapRun = {
   runId: string
   targetId: string
@@ -164,6 +195,28 @@ export const api = {
     if (options.sort) params.set("sort", options.sort)
     if (options.includeBaseline) params.set("includeBaseline", "true")
     return request<{ games: SteamGame[] }>(`/api/steam/games?${params}`)
+  },
+  appCharts: (options: {
+    country?: string
+    chart?: string
+    genre?: string
+    sort?: string
+    range?: string
+    newAppsOnly?: boolean
+    newTermsOnly?: boolean
+    limit?: number
+  } = {}) => {
+    const params = new URLSearchParams({
+      country: options.country ?? "us",
+      chart: options.chart ?? "top-free",
+      genre: options.genre ?? "all",
+      sort: options.sort ?? "rising",
+      range: options.range ?? "7d",
+      limit: String(options.limit ?? 100)
+    })
+    if (options.newAppsOnly) params.set("newAppsOnly", "true")
+    if (options.newTermsOnly) params.set("newTermsOnly", "true")
+    return request<{ entries: AppChartEntry[]; newTerms: AppChartNewTerm[] }>(`/api/app-charts?${params}`)
   },
   targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),
   runs: () => request<{ runs: SitemapRun[] }>("/api/sitemap/runs"),

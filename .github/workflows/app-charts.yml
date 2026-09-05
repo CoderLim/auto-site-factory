@@ -1,0 +1,74 @@
+name: App Store Charts Monitor
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/app-charts.yml"
+      - "apps/worker/src/app-chart-monitor.ts"
+      - "packages/database/src/app-chart-repository.ts"
+      - "migrations/008_app_charts.sql"
+  pull_request:
+    paths:
+      - ".github/workflows/app-charts.yml"
+      - "apps/worker/src/app-chart-monitor.ts"
+      - "packages/database/src/app-chart-repository.ts"
+      - "packages/database/src/index.ts"
+      - "apps/api/src/index.ts"
+      - "apps/dashboard/src/**"
+      - "migrations/008_app_charts.sql"
+      - "package.json"
+  schedule:
+    # getcharts.app refreshes iOS rankings every six hours. Offset to avoid top-of-hour contention.
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: app-store-charts-monitor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+
+  monitor:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      APP_CHART_COUNTRY: "us"
+      APP_CHART_CHART: "top-free"
+      APP_CHART_GENRES: "all,6007,6002,6008,6027,6017,6012,6014"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require database secret
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+
+      - run: npm install
+      - run: npm run build
+
+      - name: Migrate database
+        run: node packages/database/dist/migrate.js
+
+      - name: Capture App Store charts
+        run: node apps/worker/dist/app-chart-monitor.js
