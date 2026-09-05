@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { fileURLToPath } from "node:url"
-import { Database, DiscoveryRepository, KeywordRepository, SitemapRepository, SteamRepository } from "@factory/database"
+import { AppChartRepository, Database, DiscoveryRepository, KeywordRepository, SitemapRepository, SteamRepository, type AppChartSort } from "@factory/database"
 import type { SignalSourceType, SourceTarget } from "@factory/shared"
 
 const port = Number(process.env.API_PORT ?? "8787")
@@ -58,6 +58,7 @@ const server = createServer(async (request, response) => {
   const discovery = new DiscoveryRepository(db)
   const keyword = new KeywordRepository(db)
   const steam = new SteamRepository(db)
+  const appCharts = new AppChartRepository(db)
 
   try {
     if (request.method === "GET" && url.pathname === "/api/discovery/candidates") {
@@ -98,6 +99,24 @@ const server = createServer(async (request, response) => {
           sort
         })
       })
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/app-charts") {
+      const country = (url.searchParams.get("country") || "us").toLowerCase()
+      const chart = url.searchParams.get("chart") || "top-free"
+      const genre = url.searchParams.get("genre") || "all"
+      const sortRaw = url.searchParams.get("sort")
+      const sort: AppChartSort = sortRaw === "rank" || sortRaw === "new" ? sortRaw : "rising"
+      const newAppsOnly = url.searchParams.get("newAppsOnly") === "true"
+      const newTermsOnly = url.searchParams.get("newTermsOnly") === "true"
+      const limitRaw = Number(url.searchParams.get("limit") || "100")
+      const limit = Number.isFinite(limitRaw) ? limitRaw : 100
+      const range = url.searchParams.get("range") || "7d"
+      const [entries, newTerms] = await Promise.all([
+        appCharts.listChart({ country, chart, genre, sort, newAppsOnly, newTermsOnly, limit }),
+        appCharts.listNewTerms({ since: sinceForRange(range), limit: 100 })
+      ])
+      return sendJson(response, 200, { entries, newTerms })
     }
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {
