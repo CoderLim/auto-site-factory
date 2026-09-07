@@ -58,8 +58,8 @@ function NewTermStrip({ terms }: { terms: AppChartNewTerm[] }) {
   return (
     <section className="new-term-panel">
       <div className="new-term-heading">
-        <div><span className="signal-dot" />新出现的词</div>
-        <small>首次出现在历史 App Charts 中 · baseline 不计入</small>
+        <div><span className="signal-dot" />新词候选</div>
+        <small>品牌 / 造词候选；普通英语和功能词已过滤 · 仅代表首次进入 App Charts 历史，尚未验证 Google 新词</small>
       </div>
       <div className="new-term-list">
         {terms.slice(0, 30).map((item) => (
@@ -129,7 +129,7 @@ export default function AppChartsPanel() {
       <div className="app-charts-intro">
         <div>
           <strong>US · iPhone · Top Free</strong>
-          <span>每 6 小时保存一次榜单快照。重点看 First Seen、排名跃升和第一次出现的新词。</span>
+          <span>每 6 小时保存一次榜单快照。重点看 First Seen、排名跃升和新品牌 / 新概念候选。</span>
         </div>
         <div className="capture-meta">最新快照<br /><strong>{formatTime(capturedAt)}</strong></div>
       </div>
@@ -145,7 +145,7 @@ export default function AppChartsPanel() {
           <select value={signalFilter} onChange={(event) => setSignalFilter(event.target.value as SignalFilter)}>
             <option value="all">全部 App</option>
             <option value="new-apps">🆕 First Seen</option>
-            <option value="new-terms">✨ 有新词</option>
+            <option value="new-terms">✨ 有新词候选</option>
           </select>
           <select value={sort} onChange={(event) => setSort(event.target.value)}>
             <option value="rising">🔥 按上涨</option>
@@ -162,7 +162,7 @@ export default function AppChartsPanel() {
         <article><strong>{entries.length}</strong><span>当前列表</span></article>
         <article><strong>{stats.rising}</strong><span>正在上涨</span></article>
         <article><strong>{stats.newApps}</strong><span>7d First Seen</span></article>
-        <article><strong>{newTerms.length}</strong><span>{range} 新词</span></article>
+        <article><strong>{newTerms.length}</strong><span>{range} 新词候选</span></article>
       </div>
 
       <div className="card table-card app-chart-table">
@@ -202,7 +202,7 @@ export default function AppChartsPanel() {
           </tbody>
         </table>
         {loading && <div className="empty">正在读取 App Store 榜单…</div>}
-        {!loading && entries.length === 0 && <div className="empty">还没有榜单快照。首次 App Charts Monitor 运行会建立 baseline，之后开始识别 First Seen 和新词。</div>}
+        {!loading && entries.length === 0 && <div className="empty">还没有榜单快照。首次 App Charts Monitor 运行会建立 baseline，之后开始识别 First Seen 和新词候选。</div>}
       </div>
     </section>
   )

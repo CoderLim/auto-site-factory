@@ -210,15 +210,20 @@ export class AppChartRepository {
           display_term: origin.displayTerm,
           first_app_id: origin.appId
         })))
-        const termResult = await client.query<{ term: string }>(
-          `INSERT INTO app_chart_terms(term, display_term, first_seen_at, first_app_id, is_baseline, created_at)
-           SELECT x.term, x.display_term, $2::timestamptz, x.first_app_id, $3::boolean, NOW()
+        const termResult = await client.query<{ term: string; inserted: boolean }>(
+          `INSERT INTO app_chart_terms(term, display_term, first_seen_at, first_app_id, is_baseline, is_candidate, created_at)
+           SELECT x.term, x.display_term, $2::timestamptz, x.first_app_id, $3::boolean, TRUE, NOW()
            FROM jsonb_to_recordset($1::jsonb) AS x(term text, display_term text, first_app_id text)
-           ON CONFLICT (term) DO NOTHING
-           RETURNING term`,
+           ON CONFLICT (term) DO UPDATE
+           SET is_candidate = TRUE,
+               display_term = CASE
+                 WHEN app_chart_terms.display_term = '' THEN EXCLUDED.display_term
+                 ELSE app_chart_terms.display_term
+               END
+           RETURNING term, (xmax = 0) AS inserted`,
           [termPayload, input.capturedAt, baseline]
         )
-        insertedTermNames = termResult.rows.map((row) => row.term)
+        insertedTermNames = termResult.rows.filter((row) => row.inserted).map((row) => row.term)
       }
 
       if (appTerms.length > 0) {
@@ -308,6 +313,7 @@ export class AppChartRepository {
            JOIN app_chart_terms t ON t.term = at.term
            WHERE at.app_id = c.app_id
              AND at.is_new_signal = TRUE
+             AND t.is_candidate = TRUE
              AND t.first_seen_at >= c.captured_at - INTERVAL '7 days'
            ORDER BY t.first_seen_at DESC, t.display_term
          ) AS new_terms
@@ -342,6 +348,7 @@ export class AppChartRepository {
            JOIN app_chart_terms t2 ON t2.term = at2.term
            WHERE at2.app_id = c.app_id
              AND at2.is_new_signal = TRUE
+             AND t2.is_candidate = TRUE
              AND t2.first_seen_at >= c.captured_at - INTERVAL '7 days'
          ))
        ORDER BY
@@ -365,6 +372,7 @@ export class AppChartRepository {
        FROM app_chart_terms t
        LEFT JOIN app_chart_apps a ON a.app_id = t.first_app_id
        WHERE t.is_baseline = FALSE
+         AND t.is_candidate = TRUE
          AND t.first_seen_at >= $1
        ORDER BY t.first_seen_at DESC
        LIMIT $2`,
