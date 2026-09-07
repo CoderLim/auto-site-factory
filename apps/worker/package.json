@@ -12,6 +12,7 @@
   "dependencies": {
     "@factory/database": "0.1.0",
     "@factory/discovery": "0.1.0",
-    "@factory/shared": "0.1.0"
+    "@factory/shared": "0.1.0",
+    "an-array-of-english-words": "^2.0.0"
   }
 }

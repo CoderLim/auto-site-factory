@@ -1,36 +1,32 @@
+import { createRequire } from "node:module"
 import { AppChartRepository, Database, type AppChartEntryInput, type AppChartTermInput } from "@factory/database"
+
+const require = createRequire(import.meta.url)
+const englishWords = require("an-array-of-english-words") as string[]
+const ENGLISH_WORDS = new Set(englishWords)
 
 const DEFAULT_GENRES = ["all", "6007", "6002", "6008", "6027", "6017", "6012", "6014"]
 const APPLE_RSS_BASE_URL = process.env.APP_CHART_RSS_BASE_URL?.trim() || "https://itunes.apple.com"
 const ITUNES_LOOKUP_BASE_URL = process.env.APP_CHART_LOOKUP_BASE_URL?.trim() || "https://itunes.apple.com/lookup"
 
-// Precision matters more than recall here. App Charts is a demand-discovery signal, so ordinary
-// dictionary/product words should not become "new term" alerts merely because they first appeared
-// in our own history. We only inspect the leading brand-like part of an App Store title and suppress
-// common English words and generic app vocabulary.
+// Precision matters more than recall here. These are product/function words that can slip through
+// even when they are uncommon in a general English dictionary.
 const COMMON_TITLE_WORDS = new Set([
-  "about", "access", "account", "action", "activity", "adventure", "after", "again", "album", "alerts",
-  "all", "also", "amazing", "android", "anniversary", "answer", "answers", "apple", "apps", "assistant",
-  "audio", "auto", "baby", "background", "bank", "battle", "beauty", "best", "better", "bible", "bike",
-  "bill", "bills", "book", "books", "brain", "browser", "budget", "build", "business", "calendar",
-  "camera", "card", "cards", "care", "cash", "center", "change", "chat", "check", "children", "church",
-  "city", "clean", "cleaner", "clock", "cloud", "coach", "code", "color", "community", "companion",
-  "contact", "contacts", "content", "control", "converter", "cook", "daily", "dance", "dating", "design",
-  "designer", "diary", "dictionary", "digital", "document", "documents", "download", "drama", "dramas",
-  "draw", "drawing", "drive", "easy", "edit", "editor", "education", "email", "english", "events", "family",
-  "fast", "fetch", "file", "files", "finance", "find", "finder", "fish", "fitness", "food", "football",
-  "free", "friend", "friends", "fun", "game", "games", "gift", "gifts", "gist", "guide", "habit", "health",
-  "help", "home", "image", "images", "insect", "iphone", "ios", "journal", "kids", "language", "launch",
-  "launcher", "learn", "learning", "life", "live", "lived", "location", "lock", "mail", "manager", "map",
-  "maps", "master", "masters", "math", "meet", "meeting", "messages", "mobile", "money", "music", "news",
-  "notes", "official", "online", "organizer", "party", "password", "photo", "photos", "picture", "planner",
-  "play", "player", "plus", "premium", "productivity", "puzzle", "radio", "reader", "receipts", "record",
-  "recorder", "remote", "scanner", "school", "search", "share", "shopping", "short", "sleep", "smart", "social",
-  "sort", "sport", "sports", "store", "stories", "study", "supermarket", "task", "tasks", "test", "tests",
-  "text", "timer", "tools", "tracker", "train", "training", "transfer", "translate", "translator", "travel",
-  "tutor", "utility", "video", "videos", "voice", "vpn", "wallet", "watch", "weather", "well", "work", "workout",
-  "world", "your", "from", "this", "that", "have", "more", "make", "with", "pro", "bubble", "jam", "headbands",
-  "charades", "identifier", "digital", "camera", "share", "meet", "new"
+  "android", "anniversary", "apple", "apps", "assistant", "camera", "center", "chat", "church", "digital",
+  "document", "documents", "drama", "dramas", "editor", "fetch", "file", "files", "free", "game", "games",
+  "gift", "gifts", "gist", "identifier", "insect", "iphone", "ios", "launch", "launcher", "learning", "live",
+  "lived", "manager", "master", "masters", "mobile", "official", "online", "photo", "photos", "picture",
+  "planner", "premium", "productivity", "receipts", "share", "shopping", "short", "smart", "social", "store",
+  "supermarket", "test", "tests", "tools", "tracker", "transfer", "translator", "tutor", "video", "videos", "vpn"
+])
+
+// Obvious established brands are not useful as “new term” signals even if they enter our chart
+// history for the first time in a new category.
+const ESTABLISHED_BRAND_WORDS = new Set([
+  "adobe", "aliexpress", "amazon", "apple", "canva", "capcut", "discord", "disney", "doordash", "duolingo",
+  "facebook", "google", "instagram", "linkedin", "meta", "microsoft", "netflix", "notion", "paypal", "pinterest",
+  "reddit", "robinhood", "shein", "sherwin", "snapchat", "spotify", "target", "temu", "tiktok", "uber", "venmo",
+  "walmart", "williams", "xender", "youtube", "zoom"
 ])
 
 interface ChartEntry {
@@ -127,7 +123,7 @@ function brandSegment(name: string): string {
 
 function extractTerms(name: string): AppChartTermInput[] {
   const segment = brandSegment(name)
-  const tokens = segment.match(/[A-Za-z][A-Za-z0-9]*/g)?.slice(0, 3) ?? []
+  const tokens = segment.match(/[A-Za-z0-9]+/g)?.slice(0, 3) ?? []
   const seen = new Set<string>()
   const terms: AppChartTermInput[] = []
 
@@ -136,9 +132,11 @@ function extractTerms(name: string): AppChartTermInput[] {
     if (seen.has(term)) continue
     if (term.length < 4 || term.length > 28) continue
     if (/^\d+$/.test(term)) continue
+    if (ENGLISH_WORDS.has(term)) continue
     if (COMMON_TITLE_WORDS.has(term)) continue
+    if (ESTABLISHED_BRAND_WORDS.has(term)) continue
 
-    // Avoid version-like or mostly-numeric tokens while preserving coined brands such as ChatGPT,
+    // Avoid version-like or mostly-numeric tokens while preserving coined brands such as 3DMockups,
     // VibeShort, Airlearn, Chillio, Praktika, etc.
     const letterCount = (displayTerm.match(/[A-Za-z]/g) ?? []).length
     if (letterCount < Math.ceil(displayTerm.length * 0.6)) continue
@@ -148,6 +146,20 @@ function extractTerms(name: string): AppChartTermInput[] {
   }
 
   return terms
+}
+
+async function reclassifyHistoricalTerms(db: Database): Promise<void> {
+  const apps = await db.query<{ name: string }>(`SELECT name FROM app_chart_apps`)
+  const candidateTerms = Array.from(new Set(
+    apps.rows.flatMap((row) => extractTerms(row.name).map((item) => item.term))
+  ))
+
+  await db.query(
+    `UPDATE app_chart_terms
+     SET is_candidate = CASE WHEN term = ANY($1::text[]) THEN TRUE ELSE FALSE END`,
+    [candidateTerms]
+  )
+  console.log(`[app-charts] reclassified historical terms candidates=${candidateTerms.length}`)
 }
 
 function chartSlug(chart: string): string {
@@ -257,6 +269,8 @@ async function run(): Promise<void> {
   const repository = new AppChartRepository(db)
 
   try {
+    await reclassifyHistoricalTerms(db)
+
     const charts = new Map<string, ChartResponse>()
     for (const genre of genres) {
       const response = await fetchChart(country, chart, genre)
