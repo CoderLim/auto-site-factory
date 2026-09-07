@@ -4,11 +4,33 @@ const DEFAULT_GENRES = ["all", "6007", "6002", "6008", "6027", "6017", "6012", "
 const APPLE_RSS_BASE_URL = process.env.APP_CHART_RSS_BASE_URL?.trim() || "https://itunes.apple.com"
 const ITUNES_LOOKUP_BASE_URL = process.env.APP_CHART_LOOKUP_BASE_URL?.trim() || "https://itunes.apple.com/lookup"
 
-const GENERIC_TERMS = new Set([
-  "about", "after", "again", "also", "android", "apple", "apps", "best", "better", "chat", "daily",
-  "easy", "editor", "free", "game", "games", "iphone", "ios", "live", "mobile", "official", "online",
-  "photo", "photos", "plus", "premium", "social", "store", "tools", "tracker", "video", "videos", "with",
-  "your", "from", "this", "that", "have", "more", "make", "play", "world", "smart", "pro"
+// Precision matters more than recall here. App Charts is a demand-discovery signal, so ordinary
+// dictionary/product words should not become "new term" alerts merely because they first appeared
+// in our own history. We only inspect the leading brand-like part of an App Store title and suppress
+// common English words and generic app vocabulary.
+const COMMON_TITLE_WORDS = new Set([
+  "about", "access", "account", "action", "activity", "adventure", "after", "again", "album", "alerts",
+  "all", "also", "amazing", "android", "anniversary", "answer", "answers", "apple", "apps", "assistant",
+  "audio", "auto", "baby", "background", "bank", "battle", "beauty", "best", "better", "bible", "bike",
+  "bill", "bills", "book", "books", "brain", "browser", "budget", "build", "business", "calendar",
+  "camera", "card", "cards", "care", "cash", "center", "change", "chat", "check", "children", "church",
+  "city", "clean", "cleaner", "clock", "cloud", "coach", "code", "color", "community", "companion",
+  "contact", "contacts", "content", "control", "converter", "cook", "daily", "dance", "dating", "design",
+  "designer", "diary", "dictionary", "digital", "document", "documents", "download", "drama", "dramas",
+  "draw", "drawing", "drive", "easy", "edit", "editor", "education", "email", "english", "events", "family",
+  "fast", "fetch", "file", "files", "finance", "find", "finder", "fish", "fitness", "food", "football",
+  "free", "friend", "friends", "fun", "game", "games", "gift", "gifts", "gist", "guide", "habit", "health",
+  "help", "home", "image", "images", "insect", "iphone", "ios", "journal", "kids", "language", "launch",
+  "launcher", "learn", "learning", "life", "live", "lived", "location", "lock", "mail", "manager", "map",
+  "maps", "master", "masters", "math", "meet", "meeting", "messages", "mobile", "money", "music", "news",
+  "notes", "official", "online", "organizer", "party", "password", "photo", "photos", "picture", "planner",
+  "play", "player", "plus", "premium", "productivity", "puzzle", "radio", "reader", "receipts", "record",
+  "recorder", "remote", "scanner", "school", "search", "share", "shopping", "short", "sleep", "smart", "social",
+  "sort", "sport", "sports", "store", "stories", "study", "supermarket", "task", "tasks", "test", "tests",
+  "text", "timer", "tools", "tracker", "train", "training", "transfer", "translate", "translator", "travel",
+  "tutor", "utility", "video", "videos", "voice", "vpn", "wallet", "watch", "weather", "well", "work", "workout",
+  "world", "your", "from", "this", "that", "have", "more", "make", "with", "pro", "bubble", "jam", "headbands",
+  "charades", "identifier", "digital", "camera", "share", "meet", "new"
 ])
 
 interface ChartEntry {
@@ -97,19 +119,34 @@ function normalizeTerm(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase("en-US")
 }
 
+function brandSegment(name: string): string {
+  // App Store titles often use `Brand: description` or `Brand - description`. Only the leading
+  // segment is useful for new-brand/new-concept discovery; description words create heavy noise.
+  return name.normalize("NFKC").split(/\s*(?::|\||—|–|•|·|\s-\s)\s*/u, 1)[0]?.trim() ?? ""
+}
+
 function extractTerms(name: string): AppChartTermInput[] {
-  const matches = name.normalize("NFKC").match(/[\p{L}\p{N}]+/gu) ?? []
+  const segment = brandSegment(name)
+  const tokens = segment.match(/[A-Za-z][A-Za-z0-9]*/g)?.slice(0, 3) ?? []
   const seen = new Set<string>()
   const terms: AppChartTermInput[] = []
-  for (const displayTerm of matches) {
+
+  for (const displayTerm of tokens) {
     const term = normalizeTerm(displayTerm)
     if (seen.has(term)) continue
+    if (term.length < 4 || term.length > 28) continue
     if (/^\d+$/.test(term)) continue
-    if (term.length < 4) continue
-    if (GENERIC_TERMS.has(term)) continue
+    if (COMMON_TITLE_WORDS.has(term)) continue
+
+    // Avoid version-like or mostly-numeric tokens while preserving coined brands such as ChatGPT,
+    // VibeShort, Airlearn, Chillio, Praktika, etc.
+    const letterCount = (displayTerm.match(/[A-Za-z]/g) ?? []).length
+    if (letterCount < Math.ceil(displayTerm.length * 0.6)) continue
+
     seen.add(term)
     terms.push({ term, displayTerm })
   }
+
   return terms
 }
 
