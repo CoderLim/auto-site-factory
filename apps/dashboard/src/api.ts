@@ -20,6 +20,12 @@ export type DiscoveryCandidate = {
   mentionCount: number
   sourceCount: number
   sourceTypes: string[]
+  platformCount: number
+  platforms: string[]
+  targetCount: number
+  authorCount: number
+  corroboration: "single_source" | "launch_only" | "organic"
+  stage: "DISCOVERED" | "ACCELERATING" | "CROSS_PLATFORM" | "MEDIA_PICKUP" | "BREAKOUT"
   viralScore: number
   firstSeenAt: string
   lastSeenAt: string
