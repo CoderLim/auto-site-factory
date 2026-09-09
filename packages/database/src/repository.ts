@@ -20,6 +20,18 @@ function parseTarget(row: Record<string, unknown>): SourceTarget {
   }
 }
 
+function metricNumber(metadata: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = metadata[key]
+    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value)
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value)
+      if (Number.isFinite(parsed)) return Math.round(parsed)
+    }
+  }
+  return undefined
+}
+
 const VIRAL_SOURCE_BONUS: Partial<Record<SignalSourceType, number>> = {
   twitch: 8,
   x: 8,
@@ -39,6 +51,7 @@ export function calculateViralScore(input: {
   platformCount?: number
   targetCount?: number
   authorCount?: number
+  engagementDelta24h?: number
   sourceTypes: string[]
   firstSeenAt: string
 }, now = new Date()): number {
@@ -49,16 +62,18 @@ export function calculateViralScore(input: {
   const platformCount = input.platformCount ?? input.sourceCount
   const targetCount = input.targetCount ?? input.sourceCount
   const authorCount = input.authorCount ?? 0
+  const engagementDelta24h = Math.max(0, input.engagementDelta24h ?? 0)
 
   const recency = ageHours <= 24 ? 15 : ageHours <= 72 ? 8 : ageHours <= 168 ? 3 : 0
   const platformDiversity = Math.min(3, Math.max(0, platformCount - 1)) * 16
   const targetBreadth = Math.min(4, Math.max(0, targetCount - platformCount)) * 2
   const authorBreadth = Math.min(5, Math.max(0, authorCount - 1)) * 4
   const repeatMentions = Math.min(12, Math.max(0, input.mentionCount - 1) * 2)
-  const velocity = Math.min(
+  const mentionVelocity = Math.min(
     15,
     Math.max(0, ((input.mentionCount - 1) / ageHours) * 24 * 3)
   )
+  const engagementVelocity = Math.min(20, Math.log2(1 + engagementDelta24h) * 2.5)
   const sourceBonus = Math.min(
     14,
     [...new Set(input.sourceTypes)]
@@ -80,7 +95,8 @@ export function calculateViralScore(input: {
         + targetBreadth
         + authorBreadth
         + repeatMentions
-        + velocity
+        + mentionVelocity
+        + engagementVelocity
         + sourceBonus
         - launchOnlyPenalty
       )
@@ -105,6 +121,12 @@ export type DiscoveryCandidateRow = {
   platforms: string[]
   targetCount: number
   authorCount: number
+  metricSampleCount: number
+  scoreDelta24h: number
+  commentDelta24h: number
+  viewDelta24h: number
+  shareDelta24h: number
+  engagementDelta24h: number
   corroboration: CorroborationKind
   stage: ViralStage
   viralScore: number
@@ -117,12 +139,13 @@ function candidateStage(input: {
   mentionCount: number
   platformCount: number
   authorCount: number
+  engagementDelta24h: number
   platforms: string[]
 }): ViralStage {
   if (input.viralScore >= 85 && input.platformCount >= 2 && input.authorCount >= 2) return "BREAKOUT"
   if (input.platforms.includes("techmeme") && input.platformCount >= 2) return "MEDIA_PICKUP"
   if (input.platformCount >= 2 && input.authorCount >= 2) return "CROSS_PLATFORM"
-  if (input.viralScore >= 55 || input.mentionCount >= 3) return "ACCELERATING"
+  if (input.viralScore >= 55 || input.mentionCount >= 3 || input.engagementDelta24h >= 25) return "ACCELERATING"
   return "DISCOVERED"
 }
 
@@ -153,7 +176,12 @@ export class DiscoveryRepository {
                   COALESCE(vm.platform_count, c.source_count, 0)::int AS platform_count,
                   COALESCE(vm.target_count, c.source_count, 0)::int AS target_count,
                   COALESCE(vm.author_count, 0)::int AS author_count,
-                  COALESCE(vm.platforms, ARRAY[]::TEXT[]) AS platforms
+                  COALESCE(vm.platforms, ARRAY[]::TEXT[]) AS platforms,
+                  COALESCE(gm.metric_sample_count, 0)::int AS metric_sample_count,
+                  COALESCE(gm.score_delta_24h, 0)::bigint AS score_delta_24h,
+                  COALESCE(gm.comment_delta_24h, 0)::bigint AS comment_delta_24h,
+                  COALESCE(gm.view_delta_24h, 0)::bigint AS view_delta_24h,
+                  COALESCE(gm.share_delta_24h, 0)::bigint AS share_delta_24h
            FROM candidates c
            JOIN entities e ON e.id = c.entity_id
            LEFT JOIN LATERAL (
@@ -168,7 +196,33 @@ export class DiscoveryRepository {
              FROM entity_mentions em
              JOIN raw_signals rs ON rs.id = em.raw_signal_id
              WHERE em.entity_id = c.entity_id
-           ) vm ON TRUE`
+           ) vm ON TRUE
+           LEFT JOIN LATERAL (
+             SELECT
+               COALESCE(SUM(samples.sample_count), 0)::int AS metric_sample_count,
+               COALESCE(SUM(GREATEST(0, COALESCE(samples.last_score, 0) - COALESCE(samples.first_score, 0))), 0)::bigint AS score_delta_24h,
+               COALESCE(SUM(GREATEST(0, COALESCE(samples.last_comments, 0) - COALESCE(samples.first_comments, 0))), 0)::bigint AS comment_delta_24h,
+               COALESCE(SUM(GREATEST(0, COALESCE(samples.last_views, 0) - COALESCE(samples.first_views, 0))), 0)::bigint AS view_delta_24h,
+               COALESCE(SUM(GREATEST(0, COALESCE(samples.last_shares, 0) - COALESCE(samples.first_shares, 0))), 0)::bigint AS share_delta_24h
+             FROM (
+               SELECT
+                 sms.raw_signal_id,
+                 COUNT(*)::int AS sample_count,
+                 (ARRAY_AGG(sms.score ORDER BY sms.observed_at ASC))[1] AS first_score,
+                 (ARRAY_AGG(sms.score ORDER BY sms.observed_at DESC))[1] AS last_score,
+                 (ARRAY_AGG(sms.comments ORDER BY sms.observed_at ASC))[1] AS first_comments,
+                 (ARRAY_AGG(sms.comments ORDER BY sms.observed_at DESC))[1] AS last_comments,
+                 (ARRAY_AGG(sms.views ORDER BY sms.observed_at ASC))[1] AS first_views,
+                 (ARRAY_AGG(sms.views ORDER BY sms.observed_at DESC))[1] AS last_views,
+                 (ARRAY_AGG(sms.shares ORDER BY sms.observed_at ASC))[1] AS first_shares,
+                 (ARRAY_AGG(sms.shares ORDER BY sms.observed_at DESC))[1] AS last_shares
+               FROM signal_metric_snapshots sms
+               JOIN entity_mentions ems ON ems.raw_signal_id = sms.raw_signal_id
+               WHERE ems.entity_id = c.entity_id
+                 AND sms.observed_at >= NOW() - INTERVAL '24 hours'
+               GROUP BY sms.raw_signal_id
+             ) samples
+           ) gm ON TRUE`
 
     const result = options.sourceType
       ? await this.db.query(
@@ -198,6 +252,17 @@ export class DiscoveryRepository {
       const platformCount = Number(row.platform_count ?? sourceCount)
       const targetCount = Number(row.target_count ?? sourceCount)
       const authorCount = Number(row.author_count ?? 0)
+      const metricSampleCount = Number(row.metric_sample_count ?? 0)
+      const scoreDelta24h = Number(row.score_delta_24h ?? 0)
+      const commentDelta24h = Number(row.comment_delta_24h ?? 0)
+      const viewDelta24h = Number(row.view_delta_24h ?? 0)
+      const shareDelta24h = Number(row.share_delta_24h ?? 0)
+      const engagementDelta24h = Math.round(
+        scoreDelta24h
+        + commentDelta24h * 2
+        + shareDelta24h * 3
+        + viewDelta24h / 1000
+      )
       const firstSeenAt = new Date(String(row.first_seen_at)).toISOString()
       const baseCandidate = {
         id: String(row.id),
@@ -213,6 +278,12 @@ export class DiscoveryRepository {
         platforms,
         targetCount,
         authorCount,
+        metricSampleCount,
+        scoreDelta24h,
+        commentDelta24h,
+        viewDelta24h,
+        shareDelta24h,
+        engagementDelta24h,
         firstSeenAt,
         lastSeenAt: new Date(String(row.last_seen_at)).toISOString()
       }
@@ -221,13 +292,21 @@ export class DiscoveryRepository {
       return {
         ...baseCandidate,
         corroboration: corroborationKind(platformCount, authorCount),
-        stage: candidateStage({ viralScore, mentionCount, platformCount, authorCount, platforms }),
+        stage: candidateStage({
+          viralScore,
+          mentionCount,
+          platformCount,
+          authorCount,
+          engagementDelta24h,
+          platforms
+        }),
         viralScore
       }
     })
 
     return candidates.sort((a, b) =>
       b.viralScore - a.viralScore ||
+      b.engagementDelta24h - a.engagementDelta24h ||
       new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime()
     )
   }
@@ -342,12 +421,13 @@ export class DiscoveryRepository {
   async insertSignals(signals: RawSignal[]): Promise<number> {
     let inserted = 0
     for (const signal of signals) {
-      const result = await this.db.query(
+      const result = await this.db.query<{ id: string }>(
         `INSERT INTO raw_signals (
           id, source_type, source_target_id, external_id, title, content, url, author,
           published_at, discovered_at, metadata, fingerprint
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12)
-        ON CONFLICT (fingerprint) DO NOTHING`,
+        ON CONFLICT (fingerprint) DO NOTHING
+        RETURNING id`,
         [
           signal.id,
           signal.sourceType,
@@ -364,6 +444,38 @@ export class DiscoveryRepository {
         ]
       )
       inserted += result.rowCount ?? 0
+
+      let rawSignalId = result.rows[0]?.id
+      if (!rawSignalId) {
+        const existing = await this.db.query<{ id: string }>(
+          `SELECT id FROM raw_signals WHERE fingerprint = $1`,
+          [signal.fingerprint]
+        )
+        rawSignalId = existing.rows[0]?.id
+      }
+      if (!rawSignalId) continue
+
+      const score = metricNumber(signal.metadata, ["score", "ups", "likes"])
+      const comments = metricNumber(signal.metadata, ["comments", "numComments", "replies"])
+      const views = metricNumber(signal.metadata, ["views", "viewCount", "impressions"])
+      const shares = metricNumber(signal.metadata, ["shares", "retweets", "numCrossposts"])
+      if (score == null && comments == null && views == null && shares == null) continue
+
+      await this.db.query(
+        `INSERT INTO signal_metric_snapshots (
+          raw_signal_id, observed_at, score, comments, views, shares, metadata
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+        ON CONFLICT (raw_signal_id, observed_at) DO NOTHING`,
+        [
+          rawSignalId,
+          signal.discoveredAt,
+          score ?? null,
+          comments ?? null,
+          views ?? null,
+          shares ?? null,
+          JSON.stringify(signal.metadata)
+        ]
+      )
     }
     return inserted
   }
