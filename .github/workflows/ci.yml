@@ -20,16 +20,13 @@ jobs:
         run: npx --yes wrangler@4.115.0 pages functions build functions --outfile=/tmp/pages-worker.js --compatibility-date=2026-08-12 --compatibility-flags=nodejs_compat
 
   ph-temp-pull:
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: temporary Product Hunt relay')
-    permissions:
-      contents: write
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Pull all Product Hunt posts for 2026-08-20
+      - name: Pull Product Hunt AI posts for 2026-08-20
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -38,39 +35,53 @@ jobs:
             k: '98d8797d9f4b42cf8f55d4b351703f1d',
             enc: 'zDvr-AfvOg13r3JMH4DwJqTVa2r8Km_GC3fW1qUXh-XP2uqozEIlZ7l54zdxKRWAcZolftEjd2AEaFk',
             iv: 'a9_k5Vx70fG1zqwy',
-            first: '100',
           };
-          (async () => {
-            let after = null, totalCount = null, page = 0;
-            const all = [];
+          const sleep = ms => new Promise(r => setTimeout(r, ms));
+          async function request(mode, after = null) {
             while (true) {
               const u = new URL(base);
               for (const [k,v] of Object.entries(fixed)) u.searchParams.set(k,v);
+              u.searchParams.set('mode', mode);
               if (after) u.searchParams.set('after', after);
               const r = await fetch(u);
               const text = await r.text();
-              if (!r.ok) throw new Error(`proxy HTTP ${r.status}: ${text.slice(0,1000)}`);
-              const j = JSON.parse(text);
-              if (j.errors) throw new Error(JSON.stringify(j.errors));
-              const p = j.data.posts;
-              totalCount ??= p.totalCount;
-              all.push(...p.nodes);
-              page++;
-              console.log(`page=${page} fetched=${p.nodes.length} accumulated=${all.length} totalCount=${totalCount}`);
+              let j;
+              try { j = JSON.parse(text); } catch { throw new Error(`${mode} invalid JSON HTTP ${r.status}: ${text.slice(0,1200)}`); }
+              if (r.status === 429) {
+                const reset = Number(j?.errors?.[0]?.details?.reset_in ?? 60);
+                console.log(`${mode}: rate limited; reset_in=${reset}s`);
+                await sleep((Math.max(5, Math.min(reset + 3, 900))) * 1000);
+                continue;
+              }
+              if (!r.ok) throw new Error(`${mode} HTTP ${r.status}: ${text.slice(0,1200)}`);
+              if (j.errors) throw new Error(`${mode} GraphQL: ${JSON.stringify(j.errors)}`);
+              return j.data.posts;
+            }
+          }
+          (async () => {
+            const count = await request('count');
+            const allTotalCount = count.totalCount;
+            let after = null, aiTotalCount = null, pages = 0;
+            const posts = [];
+            while (true) {
+              const p = await request('ai', after);
+              aiTotalCount ??= p.totalCount;
+              posts.push(...p.nodes);
+              pages++;
+              console.log(`ai: page=${pages} fetched=${p.nodes.length} accumulated=${posts.length} total=${aiTotalCount}`);
               if (!p.pageInfo.hasNextPage) break;
               after = p.pageInfo.endCursor;
-              if (!after) throw new Error('missing endCursor');
-              if (page > 100) throw new Error('pagination guard exceeded');
+              if (!after) throw new Error('ai: missing endCursor');
+              if (pages > 100) throw new Error('ai: pagination guard exceeded');
             }
-            fs.mkdirSync('tmp', { recursive: true });
-            fs.writeFileSync('tmp/ph-products-2026-08-20.json', JSON.stringify({ productHuntDay:'2026-08-20', totalCount, fetchedCount:all.length, posts:all }, null, 2));
-            console.log(`DONE totalCount=${totalCount} fetchedCount=${all.length}`);
+            if (posts.length !== aiTotalCount) throw new Error(`ai count mismatch ${posts.length}/${aiTotalCount}`);
+            const out = {productHuntDay:'2026-08-20',allTotalCount,aiTopicTotalCount:aiTotalCount,aiFetchedCount:posts.length,aiPages:pages,posts};
+            fs.writeFileSync('ph-ai-products-2026-08-20.json', JSON.stringify(out, null, 2));
+            console.log(`DONE allTotal=${allTotalCount} ai=${posts.length}/${aiTotalCount}`);
           })().catch(e => { console.error(e); process.exit(1); });
           NODE
-      - name: Commit temporary result
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tmp/ph-products-2026-08-20.json
-          git commit -m "chore: store temporary Product Hunt pull"
-          git push
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ph-ai-products-2026-08-20
+          path: ph-ai-products-2026-08-20.json
+          retention-days: 1
