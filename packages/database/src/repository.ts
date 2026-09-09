@@ -36,6 +36,9 @@ const VIRAL_SOURCE_BONUS: Partial<Record<SignalSourceType, number>> = {
 export function calculateViralScore(input: {
   mentionCount: number
   sourceCount: number
+  platformCount?: number
+  targetCount?: number
+  authorCount?: number
   sourceTypes: string[]
   firstSeenAt: string
 }, now = new Date()): number {
@@ -43,18 +46,50 @@ export function calculateViralScore(input: {
     1,
     (now.getTime() - new Date(input.firstSeenAt).getTime()) / (60 * 60 * 1000)
   )
-  const recency = ageHours <= 24 ? 15 : ageHours <= 72 ? 8 : ageHours <= 168 ? 3 : 0
-  const diversity = Math.min(3, Math.max(0, input.sourceCount - 1)) * 20
-  const repeatMentions = Math.min(15, Math.max(0, input.mentionCount - 1) * 3)
-  const velocity = Math.min(
-    20,
-    Math.max(0, ((input.mentionCount - 1) / ageHours) * 24 * 4)
-  )
-  const sourceBonus = [...new Set(input.sourceTypes)]
-    .reduce((sum, source) => sum + (VIRAL_SOURCE_BONUS[source as SignalSourceType] ?? 0), 0)
+  const platformCount = input.platformCount ?? input.sourceCount
+  const targetCount = input.targetCount ?? input.sourceCount
+  const authorCount = input.authorCount ?? 0
 
-  return Math.min(100, Math.round(recency + diversity + repeatMentions + velocity + sourceBonus))
+  const recency = ageHours <= 24 ? 15 : ageHours <= 72 ? 8 : ageHours <= 168 ? 3 : 0
+  const platformDiversity = Math.min(3, Math.max(0, platformCount - 1)) * 16
+  const targetBreadth = Math.min(4, Math.max(0, targetCount - platformCount)) * 2
+  const authorBreadth = Math.min(5, Math.max(0, authorCount - 1)) * 4
+  const repeatMentions = Math.min(12, Math.max(0, input.mentionCount - 1) * 2)
+  const velocity = Math.min(
+    15,
+    Math.max(0, ((input.mentionCount - 1) / ageHours) * 24 * 3)
+  )
+  const sourceBonus = Math.min(
+    14,
+    [...new Set(input.sourceTypes)]
+      .reduce((sum, source) => sum + (VIRAL_SOURCE_BONUS[source as SignalSourceType] ?? 0), 0)
+  )
+
+  // Two launch channels controlled by one visible author are not the same as
+  // independent propagation. This specifically prevents PH + founder HN posts
+  // from receiving the same cross-platform boost as organic third-party spread.
+  const launchOnlyPenalty = platformCount >= 2 && authorCount <= 1 ? 12 : 0
+
+  return Math.min(
+    100,
+    Math.max(
+      0,
+      Math.round(
+        recency
+        + platformDiversity
+        + targetBreadth
+        + authorBreadth
+        + repeatMentions
+        + velocity
+        + sourceBonus
+        - launchOnlyPenalty
+      )
+    )
+  )
 }
+
+export type ViralStage = "DISCOVERED" | "ACCELERATING" | "CROSS_PLATFORM" | "MEDIA_PICKUP" | "BREAKOUT"
+export type CorroborationKind = "single_source" | "launch_only" | "organic"
 
 export type DiscoveryCandidateRow = {
   id: string
@@ -66,9 +101,35 @@ export type DiscoveryCandidateRow = {
   mentionCount: number
   sourceCount: number
   sourceTypes: string[]
+  platformCount: number
+  platforms: string[]
+  targetCount: number
+  authorCount: number
+  corroboration: CorroborationKind
+  stage: ViralStage
   viralScore: number
   firstSeenAt: string
   lastSeenAt: string
+}
+
+function candidateStage(input: {
+  viralScore: number
+  mentionCount: number
+  platformCount: number
+  authorCount: number
+  platforms: string[]
+}): ViralStage {
+  if (input.viralScore >= 85 && input.platformCount >= 2 && input.authorCount >= 2) return "BREAKOUT"
+  if (input.platforms.includes("techmeme") && input.platformCount >= 2) return "MEDIA_PICKUP"
+  if (input.platformCount >= 2 && input.authorCount >= 2) return "CROSS_PLATFORM"
+  if (input.viralScore >= 55 || input.mentionCount >= 3) return "ACCELERATING"
+  return "DISCOVERED"
+}
+
+function corroborationKind(platformCount: number, authorCount: number): CorroborationKind {
+  if (platformCount >= 2 && authorCount >= 2) return "organic"
+  if (platformCount >= 2) return "launch_only"
+  return "single_source"
 }
 
 export class DiscoveryRepository {
@@ -86,24 +147,39 @@ export class DiscoveryRepository {
     options: { sourceType?: SignalSourceType; limit?: number } = {}
   ): Promise<DiscoveryCandidateRow[]> {
     const limit = options.limit ?? 500
-    const result = options.sourceType
-      ? await this.db.query(
-          `SELECT c.id, c.entity_id, e.canonical_name, e.entity_type, e.scope,
+    const baseSelect = `SELECT c.id, c.entity_id, e.canonical_name, e.entity_type, e.scope,
                   c.status, c.mention_count, c.source_count, c.source_types,
-                  c.first_seen_at, c.last_seen_at
+                  c.first_seen_at, c.last_seen_at,
+                  COALESCE(vm.platform_count, c.source_count, 0)::int AS platform_count,
+                  COALESCE(vm.target_count, c.source_count, 0)::int AS target_count,
+                  COALESCE(vm.author_count, 0)::int AS author_count,
+                  COALESCE(vm.platforms, ARRAY[]::TEXT[]) AS platforms
            FROM candidates c
            JOIN entities e ON e.id = c.entity_id
+           LEFT JOIN LATERAL (
+             SELECT
+               COUNT(DISTINCT COALESCE(NULLIF(rs.metadata->>'platform', ''), rs.source_type))::int AS platform_count,
+               COUNT(DISTINCT rs.source_target_id)::int AS target_count,
+               COUNT(DISTINCT NULLIF(rs.author, ''))::int AS author_count,
+               ARRAY_REMOVE(
+                 ARRAY_AGG(DISTINCT COALESCE(NULLIF(rs.metadata->>'platform', ''), rs.source_type)),
+                 NULL
+               ) AS platforms
+             FROM entity_mentions em
+             JOIN raw_signals rs ON rs.id = em.raw_signal_id
+             WHERE em.entity_id = c.entity_id
+           ) vm ON TRUE`
+
+    const result = options.sourceType
+      ? await this.db.query(
+          `${baseSelect}
            WHERE c.first_seen_at >= $1 AND $2 = ANY(c.source_types)
            ORDER BY c.first_seen_at DESC, c.id DESC
            LIMIT $3`,
           [since.toISOString(), options.sourceType, limit]
         )
       : await this.db.query(
-          `SELECT c.id, c.entity_id, e.canonical_name, e.entity_type, e.scope,
-                  c.status, c.mention_count, c.source_count, c.source_types,
-                  c.first_seen_at, c.last_seen_at
-           FROM candidates c
-           JOIN entities e ON e.id = c.entity_id
+          `${baseSelect}
            WHERE c.first_seen_at >= $1
            ORDER BY c.first_seen_at DESC, c.id DESC
            LIMIT $2`,
@@ -114,10 +190,16 @@ export class DiscoveryRepository {
       const sourceTypes = Array.isArray(row.source_types)
         ? row.source_types.map((item) => String(item))
         : []
+      const platforms = Array.isArray(row.platforms)
+        ? row.platforms.map((item) => String(item)).filter(Boolean)
+        : []
       const mentionCount = Number(row.mention_count ?? 0)
       const sourceCount = Number(row.source_count ?? 0)
+      const platformCount = Number(row.platform_count ?? sourceCount)
+      const targetCount = Number(row.target_count ?? sourceCount)
+      const authorCount = Number(row.author_count ?? 0)
       const firstSeenAt = new Date(String(row.first_seen_at)).toISOString()
-      const candidate = {
+      const baseCandidate = {
         id: String(row.id),
         entityId: String(row.entity_id),
         name: String(row.canonical_name),
@@ -127,13 +209,20 @@ export class DiscoveryRepository {
         mentionCount,
         sourceCount,
         sourceTypes,
+        platformCount,
+        platforms,
+        targetCount,
+        authorCount,
         firstSeenAt,
         lastSeenAt: new Date(String(row.last_seen_at)).toISOString()
       }
+      const viralScore = calculateViralScore(baseCandidate)
 
       return {
-        ...candidate,
-        viralScore: calculateViralScore(candidate)
+        ...baseCandidate,
+        corroboration: corroborationKind(platformCount, authorCount),
+        stage: candidateStage({ viralScore, mentionCount, platformCount, authorCount, platforms }),
+        viralScore
       }
     })
 
@@ -353,16 +442,23 @@ export class DiscoveryRepository {
       }
     }
 
+    const platformValue = signal.metadata.platform
+    const platform = typeof platformValue === "string" && platformValue.trim()
+      ? platformValue.trim()
+      : signal.sourceType
     const mention = await this.db.query(
       `INSERT INTO entity_mentions (
-        id, entity_id, raw_signal_id, source_type, confidence, evidence
-       ) VALUES ($1,$2,$3,$4,$5,$6)
+        id, entity_id, raw_signal_id, source_type, source_target_id, author, platform, confidence, evidence
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (entity_id, raw_signal_id) DO NOTHING`,
       [
         newId("mention"),
         entityId,
         signal.id,
         signal.sourceType,
+        signal.sourceTargetId,
+        signal.author ?? null,
+        platform,
         entity.confidence,
         entity.evidence ?? signal.title ?? signal.content ?? null
       ]
