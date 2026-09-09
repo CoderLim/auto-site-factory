@@ -1,5 +1,5 @@
 import type { Collector } from "@factory/shared"
-import { configBoolean, configNumber, configStringArray, makeSignal } from "./base.js"
+import { configBoolean, configNumber, configString, configStringArray, makeSignal } from "./base.js"
 
 type HnItem = {
   id?: number
@@ -27,6 +27,9 @@ export const hnCollector: Collector = {
     const historyLimit = Math.min(1000, Math.max(maxItems, configNumber(target.config, "historyLimit", 500)))
     const minScore = Math.max(0, configNumber(target.config, "minScore", 0))
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
+    const snapshotExisting = configBoolean(target.config, "snapshotExisting", false)
+    const platform = configString(target.config, "platform", "hn")
+    const sourceRole = configString(target.config, "sourceRole", "discovery")
     const titlePrefixes = configStringArray(target.config, "titlePrefixes").map((value) => value.toLowerCase())
 
     const response = await context.fetch(`https://hacker-news.firebaseio.com/v0/${feed}.json`)
@@ -46,7 +49,8 @@ export const hnCollector: Collector = {
       }
     }
 
-    const items = await Promise.all(newIds.map(async (id): Promise<HnItem | undefined> => {
+    const idsToFetch = snapshotExisting ? ids : newIds
+    const items = await Promise.all(idsToFetch.map(async (id): Promise<HnItem | undefined> => {
       const itemResponse = await context.fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`)
       if (!itemResponse.ok) return undefined
       return await itemResponse.json() as HnItem
@@ -68,6 +72,8 @@ export const hnCollector: Collector = {
         discoveredAt: context.now,
         metadata: {
           feed,
+          platform,
+          sourceRole,
           score: item.score ?? 0,
           comments: item.descendants ?? 0,
           discussionUrl: `https://news.ycombinator.com/item?id=${item.id}`
