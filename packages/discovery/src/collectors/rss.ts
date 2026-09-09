@@ -1,5 +1,5 @@
 import type { Collector } from "@factory/shared"
-import { configBoolean, configNumber, makeSignal, requireConfigString } from "./base.js"
+import { configBoolean, configNumber, configString, makeSignal, requireConfigString } from "./base.js"
 
 type FeedEntry = {
   id: string
@@ -86,6 +86,8 @@ export const rssCollector: Collector = {
     const maxItems = Math.min(100, Math.max(1, configNumber(target.config, "maxItems", 50)))
     const historyLimit = Math.min(1000, Math.max(maxItems, configNumber(target.config, "historyLimit", 300)))
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
+    const platform = configString(target.config, "platform", "rss")
+    const sourceRole = configString(target.config, "sourceRole", "discovery")
 
     const response = await context.fetch(feedUrl, {
       headers: {
@@ -116,7 +118,7 @@ export const rssCollector: Collector = {
         url: entry.link,
         publishedAt: entry.publishedAt,
         discoveredAt: context.now,
-        metadata: { feedUrl }
+        metadata: { feedUrl, platform, sourceRole }
       }))
 
     return {
