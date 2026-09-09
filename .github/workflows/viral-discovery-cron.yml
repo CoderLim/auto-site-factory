@@ -58,9 +58,11 @@ jobs:
       - name: Sync viral source targets
         run: node apps/worker/dist/sync-targets.js
 
-      - name: Collect zero-cost public feeds
+      - name: Collect zero-cost discovery river
         run: |
           node apps/worker/dist/index.js --once --source=hn
+          node apps/worker/dist/index.js --once --source=reddit
+          node apps/worker/dist/index.js --once --source=official_api
           node apps/worker/dist/index.js --once --source=rss
           node apps/worker/dist/index.js --once --source=youtube
 
