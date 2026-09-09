@@ -26,6 +26,17 @@ function validListing(value: string): "new" | "rising" | "hot" {
   return value === "rising" || value === "hot" ? value : "new"
 }
 
+function seenFullnamesFromCursor(cursor: Record<string, unknown> | undefined): Set<string> {
+  const many = cursor?.seenFullnames
+  const seen = new Set<string>()
+  if (Array.isArray(many)) {
+    for (const item of many) if (typeof item === "string" && item) seen.add(item)
+  }
+  const legacy = cursor?.lastSeenFullname
+  if (typeof legacy === "string" && legacy) seen.add(legacy)
+  return seen
+}
+
 export const redditCollector: Collector = {
   type: "reddit",
   async collect(target, cursor, context) {
@@ -39,18 +50,19 @@ export const redditCollector: Collector = {
     const listing = validListing(configString(target.config, "listing", "new"))
     const limit = Math.min(100, Math.max(1, configNumber(target.config, "limit", 100)))
     const maxPages = Math.min(10, Math.max(1, configNumber(target.config, "maxPages", 3)))
+    const historyLimit = Math.min(2000, Math.max(limit * maxPages, configNumber(target.config, "historyLimit", 500)))
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", false)
+    const snapshotExisting = configBoolean(target.config, "snapshotExisting", false)
     const platform = configString(target.config, "platform", "reddit")
     const sourceRole = configString(target.config, "sourceRole", "discovery")
-    const lastSeenFullname = typeof cursor?.lastSeenFullname === "string" ? cursor.lastSeenFullname : undefined
+    const seen = seenFullnamesFromCursor(cursor)
+    const isFirstRun = !Array.isArray(cursor?.seenFullnames) && typeof cursor?.lastSeenFullname !== "string"
 
     const signals: RawSignal[] = []
+    const currentFullnames: string[] = []
     let after: string | undefined
-    let newestFullname: string | undefined
-    let reachedPreviousCursor = false
-    const isFirstRun = !lastSeenFullname
 
-    for (let page = 0; page < maxPages && !reachedPreviousCursor; page += 1) {
+    for (let page = 0; page < maxPages; page += 1) {
       const params = new URLSearchParams({ limit: String(limit), raw_json: "1" })
       if (after) params.set("after", after)
       const baseUrl = token ? "https://oauth.reddit.com" : "https://www.reddit.com"
@@ -67,16 +79,15 @@ export const redditCollector: Collector = {
       if (!response.ok) throw new Error(`Reddit ${response.status}: r/${subreddit}/${listing}`)
       const payload = await response.json() as { data?: { children?: RedditChild[]; after?: string | null } }
       const children = payload.data?.children ?? []
-      if (!newestFullname) newestFullname = children[0]?.data?.name
 
       for (const child of children) {
         const post = child.data
-        if (!post?.id || !post.title) continue
-        if (lastSeenFullname && post.name === lastSeenFullname) {
-          reachedPreviousCursor = true
-          break
-        }
+        if (!post?.id || !post.title || !post.name) continue
+        currentFullnames.push(post.name)
+
+        const alreadySeen = seen.has(post.name)
         if (isFirstRun && baselineOnFirstRun) continue
+        if (alreadySeen && !snapshotExisting) continue
 
         const outboundUrl = post.url_overridden_by_dest
           || (!post.is_self && post.url && !post.url.includes("reddit.com/") ? post.url : undefined)
@@ -99,7 +110,8 @@ export const redditCollector: Collector = {
             numCrossposts: post.num_crossposts ?? 0,
             domain: post.domain,
             outboundUrl,
-            isSelf: post.is_self ?? false
+            isSelf: post.is_self ?? false,
+            snapshotExisting: alreadySeen
           }
         }))
       }
@@ -110,7 +122,10 @@ export const redditCollector: Collector = {
 
     return {
       signals,
-      nextCursor: { lastSeenFullname: newestFullname ?? lastSeenFullname ?? "" }
+      nextCursor: {
+        seenFullnames: [...currentFullnames, ...seen].slice(0, historyLimit),
+        lastSeenFullname: currentFullnames[0] ?? (typeof cursor?.lastSeenFullname === "string" ? cursor.lastSeenFullname : "")
+      }
     }
   }
 }
