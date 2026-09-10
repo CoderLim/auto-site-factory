@@ -153,11 +153,7 @@ function candidateMatchesDedicatedUrl(name: string, signal: StoredSignal): boole
       if (labels.some((part) => normalizeToken(part) === normalized)) return true
 
       const pathParts = parsed.pathname.split("/").filter(Boolean)
-      if (host === "github.com") {
-        if (pathParts.some((part) => normalizeToken(part) === normalized)) return true
-      } else if (pathParts.some((part) => normalizeToken(part) === normalized)) {
-        return true
-      }
+      if (pathParts.some((part) => normalizeToken(part) === normalized)) return true
     } catch {
       // Ignore malformed source URLs.
     }
@@ -192,6 +188,14 @@ function isShowHnEntity(name: string, signal: StoredSignal): boolean {
   if (!/^show\s+hn:/i.test(title)) return false
   const escaped = escapeRegExp(name)
   return new RegExp(`^show\\s+hn:\\s*${escaped}(?=$|\\s*[|:–—>(])`, "i").test(title)
+}
+
+function hasNamedTitlePrefix(name: string, signal: StoredSignal): boolean {
+  if (wordCount(name) > 3) return false
+  const title = signal.title?.trim() ?? ""
+  if (!title) return false
+  const escaped = escapeRegExp(name)
+  return new RegExp(`^${escaped}(?:\\s*[|:–—>]|\\s+-\\s+|\\s+(?:launch|launched|beta|app|game|tool)\\b)`, "i").test(title)
 }
 
 function hasSpecificTitleStart(name: string, signal: StoredSignal): boolean {
@@ -233,9 +237,9 @@ export function isHighQualityViralEntity(entity: ExtractedEntity, signal: Stored
   if (hasExplicitNamingContext(name, signal)) return true
   if (hasUsageContext(name, signal)) return true
   if (candidateMatchesDedicatedUrl(name, signal)) return true
+  if (hasNamedTitlePrefix(name, signal)) return true
   if (hasSpecificTitleStart(name, signal)) return true
 
-  // A semantic extractor may rescue a plain brand, but heuristic OTHER entities need concrete evidence.
   if (["PRODUCT", "TOOL", "GAME", "AI_MODEL"].includes(entity.type) && entity.confidence >= 0.8) return true
   return false
 }
