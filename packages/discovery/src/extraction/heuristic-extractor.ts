@@ -69,7 +69,7 @@ function isNameLikePhrase(value: string): boolean {
 function takeNamedRun(value: string, maxTokens = 6): string | undefined {
   const trimmed = value
     .replace(/^[\s'"“”]+/, "")
-    .split(/[,;!?]|\s+[–—]\s+|\s+-\s+|\s*\|\s*|\s*\(|\s*\[/)[0]
+    .split(/[,;!?]|\s*[–—]\s*|\s+-\s+|\s*\|\s*|\s*\(|\s*\[/)[0]
     ?.trim()
   if (!trimmed) return undefined
 
@@ -128,9 +128,6 @@ function extractVerbNamedPhrases(text: string): string[] {
     const remainder = text.slice(start).replace(/^\s+(?:the\s+)?/i, "")
     const named = takeNamedRun(remainder, ACTION_VERBS.has(verb) ? 6 : 2)
     if (!named) continue
-
-    // "new service", "try this" etc. are filtered later, but preserving original casing here
-    // prevents a case-insensitive regexp from manufacturing lowercase topic words as entities.
     results.push(named)
   }
   return results
