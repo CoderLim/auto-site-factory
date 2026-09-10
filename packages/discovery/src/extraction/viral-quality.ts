@@ -8,7 +8,7 @@ const HARD_NOISE = new Set([
 ])
 
 const GENERIC_TOPICS = new Set([
-  "ai", "agent", "agents", "api", "app", "apps", "browser", "chat", "cloud", "code", "coding",
+  "ai", "agent", "agents", "api", "app", "apps", "browser", "chat", "childcare", "cloud", "code", "coding",
   "crypto", "data", "database", "design", "email", "finance", "game", "games", "gaming", "gambling",
   "hardware", "health", "image", "images", "internet", "laptop", "manager", "model", "models", "music",
   "news", "option", "photo", "photos", "privacy", "raw", "research", "search", "security", "server",
@@ -23,9 +23,9 @@ const SOURCE_BOILERPLATE = new Set([
 
 const MATURE_ROOT_ENTITIES = new Set([
   "airpods", "amazon", "anthropic", "apache tika", "apple", "applecare", "aws", "chatgpt", "claude",
-  "discord", "facebook", "freebsd", "gemini", "github", "gmail", "google", "instagram", "iphone", "lean4",
-  "linux", "meta", "microsoft", "nasa", "nvidia", "openai", "reddit", "roblox", "smash bros",
-  "super smash bros", "steam", "tiktok", "twitter", "windows", "youtube"
+  "discord", "facebook", "freebsd", "gemini", "geoguesser", "geoguessr", "github", "gmail", "google",
+  "instagram", "iphone", "lean4", "linux", "meta", "microsoft", "nasa", "nvidia", "openai", "reddit",
+  "roblox", "smash bros", "super smash bros", "steam", "tiktok", "twitter", "windows", "youtube"
 ])
 
 const NON_ENTITY_HOSTS = new Set([
@@ -64,10 +64,14 @@ const STRONG_NAMING_VERBS = [
 ]
 const USAGE_VERBS = ["try", "tries", "tried", "trying", "play", "plays", "played", "playing", "use", "uses", "used", "using"]
 const SENTENCE_WORDS = new Set([
-  "adopts", "are", "becomes", "building", "can", "could", "creating", "getting", "has", "have", "is", "kept",
-  "lost", "making", "outsmarting", "running", "saves", "set", "should", "using", "was", "were", "will",
-  "working", "would", "writing"
+  "adopts", "are", "becomes", "building", "can", "could", "creating", "getting", "governing", "has", "have",
+  "is", "kept", "lost", "making", "outsmarting", "running", "saves", "set", "should", "using", "was",
+  "were", "will", "working", "would", "writing"
 ])
+const VARIANT_CONTINUATIONS = [
+  "Pro", "Max", "Ultra", "Mini", "Air", "Plus", "SE", "Flash", "Turbo", "Lite", "Preview", "Alpha", "Beta",
+  "Exp", "One\\b", "Family\\b", "Series\\s+\\d+", "v?\\d+(?:\\.\\d+)*"
+].join("|")
 
 function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "")
@@ -171,7 +175,22 @@ function hasMoreSpecificContinuation(name: string, signal: StoredSignal): boolea
   const title = signal.title ?? ""
   if (!title) return false
   const escaped = escapeRegExp(name)
-  return new RegExp(`\\b${escaped}\\s+(?:v?\\d+(?:\\.\\d+)*|Pro|Max|Ultra|Mini|Air|Plus|SE|Series\\s+\\d+|One\\b|Family\\b)`, "i").test(title)
+  return new RegExp(`\\b${escaped}\\s+(?:${VARIANT_CONTINUATIONS})\\b`, "i").test(title)
+}
+
+function isUnbrandedVersionFragment(name: string, signal: StoredSignal): boolean {
+  if (!/^v?\d+(?:\.\d+){1,3}(?:\s+[A-Za-z][A-Za-z0-9-]*){0,2}$/i.test(name)) return false
+  const title = signal.title?.trim() ?? ""
+  if (!title) return false
+  const escaped = escapeRegExp(name)
+  return new RegExp(`^[A-Z][A-Za-z0-9.+#'_-]*(?:\\s+[A-Z][A-Za-z0-9.+#'_-]*){0,2}\\s+(?:launch(?:es|ed|ing)?|introduce(?:s|d|ing)?|release(?:s|d|ing)?|unveil(?:s|ed|ing)?|announce(?:s|d|ing)?)\\s+${escaped}(?=$|[,;:]|\\s)`, "i").test(title)
+}
+
+function hasStaleYearMarker(signal: StoredSignal): boolean {
+  const title = signal.title ?? ""
+  const discoveredYear = signal.discoveredAt.getUTCFullYear()
+  const years = title.match(/\b(?:19|20)\d{2}\b/g) ?? []
+  return years.some((value) => Number(value) <= discoveredYear - 2)
 }
 
 function hasExplicitNamingContext(name: string, signal: StoredSignal): boolean {
@@ -183,7 +202,7 @@ function hasExplicitNamingContext(name: string, signal: StoredSignal): boolean {
 
 function hasBrandVersionLaunchContext(name: string, signal: StoredSignal): boolean {
   const title = signal.title?.trim() ?? ""
-  const match = title.match(/^([A-Z][A-Za-z0-9.+#'_-]*(?:\s+[A-Z][A-Za-z0-9.+#'_-]*){0,2})\s+(?:launch(?:es|ed|ing)?|introduce(?:s|d|ing)?|release(?:s|d|ing)?|unveil(?:s|ed|ing)?|announce(?:s|d|ing)?)\s+(v?\d+(?:\.\d+){0,3})(?:\s+(flash|pro|max|ultra|mini|air|plus|se|turbo|lite|preview|alpha|beta))?\b/i)
+  const match = title.match(/^([A-Z][A-Za-z0-9.+#'_-]*(?:\s+[A-Z][A-Za-z0-9.+#'_-]*){0,2})\s+(?:launch(?:es|ed|ing)?|introduce(?:s|d|ing)?|release(?:s|d|ing)?|unveil(?:s|ed|ing)?|announce(?:s|d|ing)?)\s+(v?\d+(?:\.\d+){0,3})(?:\s+(flash|pro|max|ultra|mini|air|plus|se|turbo|lite|preview|alpha|beta|exp))?\b/i)
   if (!match?.[1] || !match?.[2]) return false
   const expected = `${match[1]} ${match[2]}${match[3] ? ` ${match[3]}` : ""}`
   return normalizeToken(expected) === normalizeToken(name)
@@ -245,11 +264,16 @@ export function isHighQualityViralEntity(entity: ExtractedEntity, signal: Stored
   if (!name || isBlockedName(name)) return false
   if (looksLikeSentenceFragment(name)) return false
   if (hasMoreSpecificContinuation(name, signal)) return false
+  if (isUnbrandedVersionFragment(name, signal)) return false
 
-  if (isTrustedDirectEntity(name, signal)) return true
-  if (isHnLaunchEntity(name, signal)) return true
-  if (hasExplicitNamingContext(name, signal)) return true
+  const trustedDirect = isTrustedDirectEntity(name, signal)
+  const hnLaunch = isHnLaunchEntity(name, signal)
+  if (hasStaleYearMarker(signal) && !trustedDirect && !hnLaunch) return false
+
+  if (trustedDirect) return true
+  if (hnLaunch) return true
   if (hasBrandVersionLaunchContext(name, signal)) return true
+  if (hasExplicitNamingContext(name, signal)) return true
   if (hasUsageContext(name, signal)) return true
   if (candidateMatchesDedicatedUrl(name, signal)) return true
   if (hasNamedTitlePrefix(name, signal)) return true
