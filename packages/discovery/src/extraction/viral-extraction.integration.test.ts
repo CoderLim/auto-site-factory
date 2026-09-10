@@ -33,6 +33,16 @@ test("Techmeme announcement yields the specific new product only", async () => {
   assert.deepEqual(result, ["AppleCare One Family"])
 })
 
+test("Techmeme Sources boilerplate is not an entity", async () => {
+  assert.deepEqual(await names({
+    sourceType: "rss",
+    sourceTargetId: "rss-techmeme-viral",
+    metadata: { platform: "techmeme" },
+    title: "Sources: Alibaba is set to lead a $300M round in AI model testing startup UniPat AI at a $2.5B valuation",
+    url: "https://www.techmeme.com/260910/p1#a260910p1"
+  }), [])
+})
+
 test("HN article noise produces no viral entity", async () => {
   const noisy = [
     ["A Blacklisted Chinese Tech Giant Kept Buying Nvidia's Best A.I. Chips", "https://www.nytimes.com/2026/09/06/technology/ai-chips-china-blacklist.html"],
@@ -43,7 +53,10 @@ test("HN article noise produces no viral entity", async () => {
     ["Time, Clocks, and the Ordering of Events in a Distributed System (1978) [pdf]", "https://lamport.azurewebsites.net/pubs/time-clocks.pdf"],
     ["Natural Number Game (Lean4 Tutorial)", "https://adam.math.hhu.de/#/g/hhu-adam/NNG4"],
     ["Trezor's Email provider has been breached", "https://twitter.com/CR1337/status/2097841222954184954"],
-    ["Navier–Stokes, AI and the future of research in mathematics [pdf]", "https://bms.ulb.ac.be/data/uploads/untitled.pdf"]
+    ["Navier–Stokes, AI and the future of research in mathematics [pdf]", "https://bms.ulb.ac.be/data/uploads/untitled.pdf"],
+    ["Release 13.0.8 · Grafana/Grafana", "https://github.com/grafana/grafana/releases/tag/v13.0.8"],
+    ["Smash Bros: Melee for the Web", "https://lucasigel.com/melee"],
+    ["Getting 50 GB/S Back from the Apple Neural Engine", "https://eiln.github.io/posts/ane-dma.html"]
   ] as const
 
   for (const [title, url] of noisy) {
@@ -64,6 +77,22 @@ test("specific new versions stay intact", async () => {
     title: "Multigres v0.1 Alpha: an operating system for Postgres",
     url: "https://supabase.com/blog/multigres-v0-1-alpha"
   }), ["Multigres v0.1"])
+
+  const deepseek = await names({
+    title: "DeepSeek launches v4.1 flash, postpones v4 Pro discontinuation",
+    url: "https://news.ycombinator.com/item?id=49638687"
+  })
+  assert.ok(deepseek.includes("DeepSeek v4.1 Flash"), String(deepseek))
+  assert.ok(!deepseek.includes("V4.1 Flash"), String(deepseek))
+})
+
+test("How HN typo still yields the product, not the prefix", async () => {
+  const result = await names({
+    title: "How HN: Dashly – Cookieless analytics with revenue attribution and bot filtering",
+    url: "https://www.dashly.lol"
+  })
+  assert.ok(result.includes("Dashly"), String(result))
+  assert.ok(!result.includes("How HN"), String(result))
 })
 
 test("real HN product-like candidates survive", async () => {
