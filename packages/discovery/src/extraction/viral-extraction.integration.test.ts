@@ -56,7 +56,10 @@ test("HN article noise produces no viral entity", async () => {
     ["Navier–Stokes, AI and the future of research in mathematics [pdf]", "https://bms.ulb.ac.be/data/uploads/untitled.pdf"],
     ["Release 13.0.8 · Grafana/Grafana", "https://github.com/grafana/grafana/releases/tag/v13.0.8"],
     ["Smash Bros: Melee for the Web", "https://lucasigel.com/melee"],
-    ["Getting 50 GB/S Back from the Apple Neural Engine", "https://eiln.github.io/posts/ane-dma.html"]
+    ["Getting 50 GB/S Back from the Apple Neural Engine", "https://eiln.github.io/posts/ane-dma.html"],
+    ["Childcare: What the Science Says (2021)", "https://criticalscience.medium.com/on-the-science-of-daycare-4d1ab4c2efb4"],
+    ["RL trained a 4B VLM to play GeoGuesser", "https://huggingface.co/spaces/HuggingEnvs/geoguesser-article"],
+    ["Governing GNOMEs: how the project's technical decision-making is evolving", "https://lwn.net/Articles/1091619/"]
   ] as const
 
   for (const [title, url] of noisy) {
@@ -78,12 +81,18 @@ test("specific new versions stay intact", async () => {
     url: "https://supabase.com/blog/multigres-v0-1-alpha"
   }), ["Multigres v0.1"])
 
-  const deepseek = await names({
+  const deepseekLaunch = await names({
     title: "DeepSeek launches v4.1 flash, postpones v4 Pro discontinuation",
     url: "https://news.ycombinator.com/item?id=49638687"
   })
-  assert.ok(deepseek.includes("DeepSeek v4.1 Flash"), String(deepseek))
-  assert.ok(!deepseek.includes("V4.1 Flash"), String(deepseek))
+  assert.ok(deepseekLaunch.includes("DeepSeek v4.1 Flash"), String(deepseekLaunch))
+  assert.ok(!deepseekLaunch.includes("V4.1 Flash"), String(deepseekLaunch))
+
+  const deepseekExact = await names({
+    title: "DeepSeek v4.1 Flash",
+    url: "https://twitter.com/deepseek_ai/status/2097930608790167907"
+  })
+  assert.deepEqual(deepseekExact, ["DeepSeek v4.1 Flash"])
 })
 
 test("How HN typo still yields the product, not the prefix", async () => {
@@ -106,7 +115,9 @@ test("real HN product-like candidates survive", async () => {
     ["Show HN: PCalen – Generate free printable calendar in seconds", "https://pcalen.com/", "PCalen"],
     ["Show HN: Rayrun – one MCP gateway for the whole company", "https://ray.run/", "Rayrun"],
     ["Show HN: EmbedFlow –> Upgrade embedding models without re-embedding your corpus", "https://github.com/arnsri33/embedflow", "EmbedFlow"],
-    ["Show HN: Kin – A code repository built for AI and the people working with it", "https://github.com/firelock-ai/kin", "Kin"]
+    ["Show HN: Kin – A code repository built for AI and the people working with it", "https://github.com/firelock-ai/kin", "Kin"],
+    ["ArchBench – Control Blender through chat", "https://archbench.com", "ArchBench"],
+    ["PixoMonitor: Multi-location uptime and incident response platform", "https://pixomonitor.com/", "PixoMonitor"]
   ]
 
   for (const [title, url, expected] of cases) {
