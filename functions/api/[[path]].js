@@ -100,7 +100,10 @@ export async function onRequest(context) {
           discovery.countEnabledTargets()
         ])
         const candidates = scope
-          ? rawCandidates.filter((candidate) => candidate.scope === scope)
+          ? rawCandidates.filter((candidate) =>
+              candidate.scope === scope
+              && (scope !== "viral" || candidate.status !== "filtered_noise")
+            )
           : rawCandidates
         return json({ candidates, enabledTargetCount })
       })

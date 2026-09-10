@@ -28,6 +28,7 @@ jobs:
       SOURCE_TARGETS_FILE: config/viral-source-targets.json
       TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
       TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+      VIRAL_REVALIDATE_HOURS: 720
       # Intentionally omit LLM_API_* here: this workflow is designed to stay $0.
 
     steps:
@@ -69,3 +70,6 @@ jobs:
       - name: Collect Twitch when free API credentials are configured
         if: ${{ env.TWITCH_CLIENT_ID != '' && env.TWITCH_CLIENT_SECRET != '' }}
         run: node apps/worker/dist/index.js --once --source=twitch
+
+      - name: Revalidate viral candidates with the current entity-quality rules
+        run: node apps/worker/dist/revalidate-viral.js
