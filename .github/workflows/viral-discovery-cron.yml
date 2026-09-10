@@ -11,8 +11,6 @@ on:
       - "apps/worker/**"
       - "config/viral-source-targets.json"
   schedule:
-    # GitHub cron is UTC. Every three hours is a better free-tier tradeoff:
-    # still early enough for viral SEO signals without burning Actions minutes.
     - cron: "43 */3 * * *"
 
 concurrency:
@@ -28,7 +26,9 @@ jobs:
       SOURCE_TARGETS_FILE: config/viral-source-targets.json
       TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
       TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
-      VIRAL_REVALIDATE_HOURS: 720
+      # Re-score the active discovery window on every run. A 30-day replay made each cron too slow
+      # and delayed noise removal; long historical backfills should be run separately when needed.
+      VIRAL_REVALIDATE_HOURS: 48
       # Intentionally omit LLM_API_* here: this workflow is designed to stay $0.
 
     steps:
@@ -71,5 +71,5 @@ jobs:
         if: ${{ env.TWITCH_CLIENT_ID != '' && env.TWITCH_CLIENT_SECRET != '' }}
         run: node apps/worker/dist/index.js --once --source=twitch
 
-      - name: Revalidate viral candidates with the current entity-quality rules
+      - name: Revalidate recent viral candidates with the current entity-quality rules
         run: node apps/worker/dist/revalidate-viral.js
