@@ -70,9 +70,6 @@ async function generateMissingKeywords(repository: KeywordRepository): Promise<{
   let generated = 0
   let lowSearchability = 0
 
-  // Older builds accidentally treated the operational `viral` scope as semantic context
-  // and produced terms such as "viral AWS". Remove only those old scope-context rows;
-  // the normal missing-seed pass below immediately regenerates clean entity-name keywords.
   const removedInvalid = await repository.deleteInvalidOperationalScopeKeywords(["viral"])
   if (removedInvalid > 0) console.log(`[keywords] removed ${removedInvalid} invalid operational-scope candidates`)
 
@@ -96,7 +93,7 @@ async function generateMissingKeywords(repository: KeywordRepository): Promise<{
   return { generated, lowSearchability }
 }
 
-export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<void> {
+export async function runDiscoveryOnce(sourceType?: SignalSourceType, scope?: string): Promise<void> {
   const db = new Database()
   const repository = new DiscoveryRepository(db)
   const sitemapRepository = new SitemapRepository(db)
@@ -106,7 +103,9 @@ export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<v
 
   try {
     const targets = (await repository.listEnabledTargets()).filter((target) =>
-      POLLING_SOURCES.has(target.sourceType) && (!sourceType || target.sourceType === sourceType)
+      POLLING_SOURCES.has(target.sourceType)
+      && (!sourceType || target.sourceType === sourceType)
+      && (!scope || target.scope === scope)
     )
     const results = await Promise.all(
       targets.map((target) => collectTarget(runId, target, repository, sitemapRepository))
@@ -139,8 +138,8 @@ export async function runDiscoveryOnce(sourceType?: SignalSourceType): Promise<v
       failures.map((item) => item.error).filter(Boolean).join(" | ") || undefined
     )
     console.log(
-      `[worker] run=${runId} source=${sourceType ?? "all"} status=${status}` +
-      ` signals=${signalCount} processed=${processed} newCandidates=${newCandidates}` +
+      `[worker] run=${runId} source=${sourceType ?? "all"} scope=${scope ?? "all"} status=${status}` +
+      ` targets=${targets.length} signals=${signalCount} processed=${processed} newCandidates=${newCandidates}` +
       ` keywordCandidates=${keywordResult.generated} lowSearchability=${keywordResult.lowSearchability}`
     )
   } catch (error) {
