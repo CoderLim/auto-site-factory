@@ -17,14 +17,15 @@ const GENERIC_TOPICS = new Set([
 ])
 
 const SOURCE_BOILERPLATE = new Set([
-  "ask hn", "show hn", "hacker news", "product hunt", "techmeme", "macrumors", "the daily"
+  "ask hn", "show hn", "how hn", "hacker news", "product hunt", "techmeme", "macrumors", "the daily",
+  "source", "sources"
 ])
 
 const MATURE_ROOT_ENTITIES = new Set([
   "airpods", "amazon", "anthropic", "apache tika", "apple", "applecare", "aws", "chatgpt", "claude",
   "discord", "facebook", "freebsd", "gemini", "github", "gmail", "google", "instagram", "iphone", "lean4",
-  "linux", "meta", "microsoft", "nasa", "nvidia", "openai", "reddit", "roblox", "steam", "tiktok",
-  "twitter", "windows", "youtube"
+  "linux", "meta", "microsoft", "nasa", "nvidia", "openai", "reddit", "roblox", "smash bros",
+  "super smash bros", "steam", "tiktok", "twitter", "windows", "youtube"
 ])
 
 const NON_ENTITY_HOSTS = new Set([
@@ -63,8 +64,9 @@ const STRONG_NAMING_VERBS = [
 ]
 const USAGE_VERBS = ["try", "tries", "tried", "trying", "play", "plays", "played", "playing", "use", "uses", "used", "using"]
 const SENTENCE_WORDS = new Set([
-  "adopts", "are", "becomes", "can", "could", "has", "have", "is", "kept", "lost", "outsmarting", "saves",
-  "set", "should", "was", "were", "will", "working", "would"
+  "adopts", "are", "becomes", "building", "can", "could", "creating", "getting", "has", "have", "is", "kept",
+  "lost", "making", "outsmarting", "running", "saves", "set", "should", "using", "was", "were", "will",
+  "working", "would", "writing"
 ])
 
 function normalizeToken(value: string): string {
@@ -102,6 +104,10 @@ function isDottedAcronym(name: string): boolean {
 
 function isVersionOnly(name: string): boolean {
   return /^v?\d+(?:\.\d+){1,3}(?:\s+(?:alpha|beta|rc\d*))?$/i.test(name)
+}
+
+function isReleaseLabelOnly(name: string): boolean {
+  return /^(?:release|version)\s+v?\d+(?:\.\d+){1,3}(?:\s+(?:alpha|beta|rc\d*))?$/i.test(name)
 }
 
 function hasPossessiveFragment(name: string): boolean {
@@ -183,11 +189,11 @@ function hasUsageContext(name: string, signal: StoredSignal): boolean {
     || new RegExp(`\\bnew\\s+${escaped}\\b`, "i").test(text)
 }
 
-function isShowHnEntity(name: string, signal: StoredSignal): boolean {
+function isHnLaunchEntity(name: string, signal: StoredSignal): boolean {
   const title = signal.title?.trim() ?? ""
-  if (!/^show\s+hn:/i.test(title)) return false
+  if (!/^(?:show|how)\s+hn:/i.test(title)) return false
   const escaped = escapeRegExp(name)
-  return new RegExp(`^show\\s+hn:\\s*${escaped}(?=$|\\s*[|:–—>(])`, "i").test(title)
+  return new RegExp(`^(?:show|how)\\s+hn:\\s*${escaped}(?=$|\\s*[|:–—>(])`, "i").test(title)
 }
 
 function hasNamedTitlePrefix(name: string, signal: StoredSignal): boolean {
@@ -195,8 +201,6 @@ function hasNamedTitlePrefix(name: string, signal: StoredSignal): boolean {
   const title = signal.title?.trim() ?? ""
   if (!title) return false
   const escaped = escapeRegExp(name)
-  // Generic titles require a real separator. Zero-space en/em dashes are often lexical compounds
-  // such as Navier–Stokes; compact Show HN separators are handled separately by isShowHnEntity().
   return new RegExp(`^${escaped}(?:\\s*[|:]\\s*|\\s+[–—-]\\s+|\\s+>\\s+|\\s+(?:launch|launched|beta|app|game|tool)\\b)`, "i").test(title)
 }
 
@@ -219,10 +223,9 @@ function isBlockedName(name: string): boolean {
   const single = !phrase.includes(" ")
   if (!phrase) return true
   if (HARD_NOISE.has(phrase) || SOURCE_BOILERPLATE.has(phrase) || GEOGRAPHIES.has(phrase)) return true
-  if (isVersionOnly(name) || isDottedAcronym(name) || hasPossessiveFragment(name)) return true
+  if (isVersionOnly(name) || isReleaseLabelOnly(name) || isDottedAcronym(name) || hasPossessiveFragment(name)) return true
   if (single && GENERIC_TOPICS.has(phrase)) return true
-  // Exact mature roots are always context, never the new opportunity. Specific variants are different names.
-  if (single && MATURE_ROOT_ENTITIES.has(phrase)) return true
+  if (MATURE_ROOT_ENTITIES.has(phrase)) return true
   if (single && isPlainAcronym(name) && !isSpecificVariant(name)) return true
   return false
 }
@@ -236,7 +239,7 @@ export function isHighQualityViralEntity(entity: ExtractedEntity, signal: Stored
   if (hasMoreSpecificContinuation(name, signal)) return false
 
   if (isTrustedDirectEntity(name, signal)) return true
-  if (isShowHnEntity(name, signal)) return true
+  if (isHnLaunchEntity(name, signal)) return true
   if (hasExplicitNamingContext(name, signal)) return true
   if (hasUsageContext(name, signal)) return true
   if (candidateMatchesDedicatedUrl(name, signal)) return true
