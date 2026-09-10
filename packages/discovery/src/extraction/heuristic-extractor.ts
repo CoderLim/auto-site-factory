@@ -6,8 +6,29 @@ const STOP = new Set([
 ])
 const INTENT_SUFFIX = /\b(?:guide|wiki|codes?|tier list|release date|download|apk|price|review|gameplay|trailer|how to|get|fast|today|update|patch notes?)\b/gi
 const GENERIC_PREFIX = /^(?:new|best|official|latest|the|this|that)\s+/i
-const VIRAL_TRIGGER = /\b(?:try|tries|tried|trying|play|plays|played|playing|use|uses|used|using|meet|meets|called|named|launches|launched|launching|introduces|introduced|introducing|built|made)\s+(?:the\s+)?([A-Z][A-Za-z0-9.+#'_-]{2,50})\b/gi
-const NEW_ENTITY_TRIGGER = /\bnew\s+([A-Z][A-Za-z0-9.+#'_-]{2,50})\b/gi
+const ACTION_VERBS = new Set([
+  "announce", "announces", "announced", "announcing",
+  "build", "builds", "built", "building",
+  "call", "calls", "called", "calling",
+  "debut", "debuts", "debuted", "debuting",
+  "introduce", "introduces", "introduced", "introducing",
+  "launch", "launches", "launched", "launching",
+  "make", "makes", "made", "making",
+  "meet", "meets", "met",
+  "open-source", "open-sources", "open-sourced",
+  "release", "releases", "released", "releasing",
+  "ship", "ships", "shipped", "shipping",
+  "unveil", "unveils", "unveiled", "unveiling"
+])
+const USAGE_VERBS = new Set([
+  "play", "plays", "played", "playing",
+  "try", "tries", "tried", "trying",
+  "use", "uses", "used", "using"
+])
+const CLAUSE_BREAKERS = new Set([
+  "and", "as", "because", "but", "for", "from", "that", "to", "using", "where", "which", "with"
+])
+const RELEASE_QUALIFIERS = /\s+(?:alpha|beta|preview|rc\d*)$/i
 
 function classify(name: string, signal: StoredSignal): EntityType {
   const lower = name.toLowerCase()
@@ -25,32 +46,122 @@ function cleanPhrase(value: string): string {
   let cleaned = value
     .replace(INTENT_SUFFIX, " ")
     .replace(/\s+/g, " ")
-    .replace(/^[\s:|\-–—'“”\"]+|[\s:|\-–—'“”\"]+$/g, "")
+    .replace(/^[\s:|\-–—>'“”\"]+|[\s:|\-–—>'“”\"]+$/g, "")
+    .replace(RELEASE_QUALIFIERS, "")
     .trim()
   while (GENERIC_PREFIX.test(cleaned)) cleaned = cleaned.replace(GENERIC_PREFIX, "").trim()
   return cleaned
 }
 
-function isNameLikePhrase(value: string): boolean {
-  const words = value.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0 || words.length > 5) return false
-  return words.every((word) =>
-    /^[A-Z][A-Za-z0-9.+#'_-]*$/.test(word)
-    || /^[a-z]+[A-Z][A-Za-z0-9.+#'_-]*$/.test(word)
-    || /^[A-Z]{2,}[0-9.-]*$/.test(word)
-    || /^\d+(?:\.\d+)*$/.test(word)
-    || /^(?:of|for|and|&)$/.test(word)
-  )
+function isNameToken(token: string): boolean {
+  return /^[A-Z][A-Za-z0-9.+#'_-]*$/.test(token)
+    || /^[a-z]+[A-Z][A-Za-z0-9.+#'_-]*$/.test(token)
+    || /^(?:v?\d+(?:\.\d+){0,3}|\d+)$/i.test(token)
+    || /^(?:of|for|and|&)$/.test(token)
 }
 
-function extractDistinctiveTokens(text: string): string[] {
-  const words = text.match(/\b[A-Za-z][A-Za-z0-9.+#'_-]*\b/g) ?? []
-  return words.filter((word) =>
-    /[A-Za-z]+[-_.+]?[0-9]+[A-Za-z0-9.+_-]*/.test(word)
-    || /^[A-Z][a-z]+[A-Z][A-Za-z0-9]*$/.test(word)
-    || /^[a-z]+[A-Z][A-Za-z0-9]*$/.test(word)
-    || /^[A-Za-z]+\.[A-Za-z0-9.-]+$/.test(word)
-  )
+function isNameLikePhrase(value: string): boolean {
+  const words = value.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0 || words.length > 6) return false
+  return words.every(isNameToken)
+}
+
+function takeNamedRun(value: string, maxTokens = 6): string | undefined {
+  const trimmed = value
+    .replace(/^[\s'"“”]+/, "")
+    .split(/[,;!?]|\s+[–—]\s+|\s+-\s+|\s*\|\s*|\s*\(|\s*\[/)[0]
+    ?.trim()
+  if (!trimmed) return undefined
+
+  const out: string[] = []
+  for (const rawToken of trimmed.split(/\s+/)) {
+    const token = rawToken.replace(/[)'"”]+$/g, "")
+    if (!token) break
+    if (CLAUSE_BREAKERS.has(token.toLowerCase()) && out.length > 0) break
+    if (!isNameToken(token)) break
+    out.push(token)
+    if (out.length >= maxTokens) break
+  }
+  const phrase = cleanPhrase(out.join(" "))
+  return phrase && isNameLikePhrase(phrase) ? phrase : undefined
+}
+
+function extractShowHnName(title: string): string[] {
+  const match = title.match(/^Show\s+HN:\s*(.+)$/i)
+  if (!match?.[1]) return []
+  const first = takeNamedRun(match[1], 6)
+  return first ? [first] : []
+}
+
+function extractLeadingNamedPhrase(title: string): string[] {
+  const match = title.match(/^(.{2,90}?)(?:\s*[–—]\s*|\s+-\s+|\s*\|\s*|:\s+)/)
+  const first = cleanPhrase(match?.[1]?.trim() ?? "")
+  if (!first || /^show\s+hn$/i.test(first) || /^ask\s+hn$/i.test(first) || !isNameLikePhrase(first)) return []
+  return [first]
+}
+
+function extractShortWholeTitle(title: string): string[] {
+  const value = cleanPhrase(title)
+  if (!value || value.length > 80) return []
+  const words = value.split(/\s+/)
+  if (words.length > 4 || !isNameLikePhrase(value)) return []
+  return [value]
+}
+
+function extractVersionedPhrases(title: string): string[] {
+  const matches = [...title.matchAll(/\b((?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)(?:\s+(?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)){0,3}\s+(?:v?\d+(?:\.\d+){0,3}|\d+)(?:\s+(?:Pro|Max|Ultra|Mini|Air|Plus|SE|Series\s+\d+))?)\b/g)]
+    .map((match) => cleanPhrase(match[1] ?? ""))
+    .filter(Boolean)
+  return matches.filter(isNameLikePhrase)
+}
+
+function extractVerbNamedPhrases(text: string): string[] {
+  const words = [...text.matchAll(/\b([A-Za-z][A-Za-z-]*)\b/g)]
+  const results: string[] = []
+
+  for (let index = 0; index < words.length; index += 1) {
+    const match = words[index]
+    const verb = match?.[1]?.toLowerCase()
+    if (!verb || (!ACTION_VERBS.has(verb) && !USAGE_VERBS.has(verb) && verb !== "new")) continue
+
+    const start = (match.index ?? 0) + (match[0]?.length ?? 0)
+    const remainder = text.slice(start).replace(/^\s+(?:the\s+)?/i, "")
+    const named = takeNamedRun(remainder, ACTION_VERBS.has(verb) ? 6 : 2)
+    if (!named) continue
+
+    // "new service", "try this" etc. are filtered later, but preserving original casing here
+    // prevents a case-insensitive regexp from manufacturing lowercase topic words as entities.
+    results.push(named)
+  }
+  return results
+}
+
+function extractQuotedAnnouncement(text: string): string[] {
+  return [...text.matchAll(/\b(?:announce(?:s|d|ing)?|introduce(?:s|d|ing)?|launch(?:es|ed|ing)?|unveil(?:s|ed|ing)?|release(?:s|d|ing)?)\s+["'“]([^"'”]{2,80})["'”]/gi)]
+    .map((match) => cleanPhrase(match[1] ?? ""))
+    .filter((value) => Boolean(value) && isNameLikePhrase(value))
+}
+
+function extractViralCandidates(signal: StoredSignal): string[] {
+  const title = signal.title?.trim() ?? ""
+  const text = `${title}\n${signal.content ?? ""}`.slice(0, 1600)
+  const direct = typeof signal.metadata.directEntity === "string" && signal.metadata.directEntity.trim()
+    ? [signal.metadata.directEntity.trim()]
+    : []
+  const productHuntTitle = String(signal.metadata.platform ?? "").toLowerCase() === "producthunt" && title
+    ? [title]
+    : []
+
+  return [
+    ...direct,
+    ...productHuntTitle,
+    ...(title ? extractShowHnName(title) : []),
+    ...(title ? extractLeadingNamedPhrase(title) : []),
+    ...(title ? extractShortWholeTitle(title) : []),
+    ...(title ? extractVersionedPhrases(title) : []),
+    ...extractVerbNamedPhrases(text),
+    ...extractQuotedAnnouncement(text)
+  ]
 }
 
 function extractTitlePhrases(text: string): string[] {
@@ -59,74 +170,26 @@ function extractTitlePhrases(text: string): string[] {
     .filter((phrase) => !STOP.has(phrase))
 }
 
-function extractVersionedPhrases(text: string): string[] {
-  return [...text.matchAll(/\b(?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)(?:\s+(?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)){0,3}\s+(?:v?\d+(?:\.\d+){0,2})\b/g)]
-    .map((match) => match[0])
-    .filter(isNameLikePhrase)
-}
-
-function extractShowHnName(title: string): string[] {
-  const match = title.match(/^Show\s+HN:\s*(.+)$/i)
-  if (!match?.[1]) return []
-  const remainder = match[1].trim()
-  const first = remainder
-    .split(/\s*[–—]\s*|\s+-\s+|\s*\|\s*|:\s+|\s+(?:where|that|which|for|to|with|using)\s+/i)[0]
-    ?.trim()
-  return first && isNameLikePhrase(first) ? [first] : []
-}
-
-function extractLeadingNamedPhrase(title: string): string[] {
-  const match = title.match(/^(.{2,80}?)(?:\s*[–—]\s*|\s+-\s+|\s*\|\s*|:\s+)/)
-  const first = match?.[1]?.trim()
-  if (!first || /^show\s+hn$/i.test(first) || !isNameLikePhrase(first)) return []
-  return [first]
-}
-
-function extractShortWholeTitle(title: string): string[] {
-  const value = title.trim()
-  if (!value || value.length > 80) return []
-  const words = value.split(/\s+/)
-  if (words.length > 4 || !isNameLikePhrase(value)) return []
-  return [value]
-}
-
-function extractViralCandidates(signal: StoredSignal): string[] {
-  const title = signal.title?.trim() ?? ""
-  const text = `${title}\n${signal.content ?? ""}`.slice(0, 1200)
-  const direct = typeof signal.metadata.directEntity === "string" && signal.metadata.directEntity.trim()
-    ? [signal.metadata.directEntity.trim()]
-    : []
-  const productHuntTitle = String(signal.metadata.platform ?? "").toLowerCase() === "producthunt" && title
-    ? [title]
-    : []
-  const showHn = title ? extractShowHnName(title) : []
-  const leading = title ? extractLeadingNamedPhrase(title) : []
-  const shortWhole = title ? extractShortWholeTitle(title) : []
-  const triggered = [
-    ...[...text.matchAll(VIRAL_TRIGGER)].map((match) => match[1]).filter(Boolean),
-    ...[...text.matchAll(NEW_ENTITY_TRIGGER)].map((match) => match[1]).filter(Boolean)
-  ] as string[]
-  const versioned = extractVersionedPhrases(title)
-  const distinctive = extractDistinctiveTokens(title)
-  return [...direct, ...productHuntTitle, ...showHn, ...leading, ...shortWhole, ...triggered, ...versioned, ...distinctive]
-}
-
 export function extractHeuristicEntities(signal: StoredSignal): ExtractedEntity[] {
   const text = (signal.title ?? signal.content ?? "").slice(0, 500)
   if (!text) return []
+
   const genericCandidates = signal.scope === "viral"
     ? extractViralCandidates(signal)
     : [
         ...[...text.matchAll(/["“']([^"”']{2,80})["”']/g)].map((match) => match[1]),
         ...extractTitlePhrases(text)
       ]
+
   const slugPhrase = signal.sourceType === "sitemap" && typeof signal.metadata.slug === "string"
     ? signal.metadata.slug.replace(/[-_]+/g, " ")
     : undefined
+
   const candidates = [...genericCandidates, ...(slugPhrase ? [slugPhrase] : [])]
     .map(cleanPhrase)
     .filter((value) => value.length >= 2 && value.length <= 80)
     .filter((value) => !STOP.has(value))
+
   const unique = [...new Map(candidates.map((value) => [value.toLowerCase(), value])).values()]
   return unique.slice(0, 8).map((name) => ({
     name,
