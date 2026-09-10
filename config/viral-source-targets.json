@@ -11,7 +11,8 @@
       "maxItems": 150,
       "historyLimit": 500,
       "baselineOnFirstRun": true,
-      "minScore": 0
+      "minScore": 0,
+      "snapshotExisting": true
     }
   },
   {
@@ -27,7 +28,8 @@
       "listing": "rising",
       "limit": 100,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -43,7 +45,8 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -59,7 +62,8 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -75,7 +79,8 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -91,7 +96,8 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -107,7 +113,8 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -123,7 +130,8 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true
+      "baselineOnFirstRun": true,
+      "snapshotExisting": true
     }
   },
   {
@@ -181,75 +189,35 @@
     }
   },
   {
-    "id": "rss-looksmax-viral",
-    "sourceType": "rss",
-    "name": "Looksmax.org Forum RSS",
-    "scope": "viral",
-    "enabled": false,
-    "config": {
-      "sourceRole": "discovery",
-      "feedUrl": "https://looksmax.org/forums/-/index.rss",
-      "maxItems": 50,
-      "historyLimit": 300,
-      "baselineOnFirstRun": true,
-      "disabledReason": "HTTP 403 from GitHub-hosted runners; do not bypass site anti-bot controls"
-    }
-  },
-  {
     "id": "youtube-xqc-viral",
     "sourceType": "youtube",
-    "name": "xQc YouTube",
+    "name": "xQc YouTube (retired fixed-channel source)",
     "scope": "viral",
-    "enabled": true,
-    "config": {
-      "sourceRole": "discovery",
-      "channelId": "UCmDTrq0LNgPodDOFZiSbsww",
-      "maxResults": 25,
-      "historyLimit": 200,
-      "baselineOnFirstRun": true
-    }
+    "enabled": false,
+    "config": { "sourceRole": "retired", "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring" }
   },
   {
     "id": "youtube-asmongold-viral",
     "sourceType": "youtube",
-    "name": "Asmongold TV YouTube",
+    "name": "Asmongold TV YouTube (retired fixed-channel source)",
     "scope": "viral",
-    "enabled": true,
-    "config": {
-      "sourceRole": "discovery",
-      "channelId": "UCQeRaTukNYft1_6AZPACnog",
-      "maxResults": 25,
-      "historyLimit": 200,
-      "baselineOnFirstRun": true
-    }
+    "enabled": false,
+    "config": { "sourceRole": "retired", "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring" }
   },
   {
     "id": "youtube-kaicenat-live-viral",
     "sourceType": "youtube",
-    "name": "Kai Cenat Live YouTube",
+    "name": "Kai Cenat Live YouTube (retired fixed-channel source)",
     "scope": "viral",
-    "enabled": true,
-    "config": {
-      "sourceRole": "discovery",
-      "channelId": "UCvCfpQXRXdJdL07pzTIA6Cw",
-      "maxResults": 25,
-      "historyLimit": 200,
-      "baselineOnFirstRun": true
-    }
+    "enabled": false,
+    "config": { "sourceRole": "retired", "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring" }
   },
   {
     "id": "twitch-viral-creators",
     "sourceType": "twitch",
-    "name": "Viral Twitch Creators",
+    "name": "Viral Twitch Creators (retired)",
     "scope": "viral",
     "enabled": false,
-    "config": {
-      "sourceRole": "discovery",
-      "logins": ["xqc", "asmongold", "kaicenat", "clavicular"],
-      "clientIdEnv": "TWITCH_CLIENT_ID",
-      "clientSecretEnv": "TWITCH_CLIENT_SECRET",
-      "minViewers": 1000,
-      "historyLimit": 1000
-    }
+    "config": { "sourceRole": "retired", "disabledReason": "Not part of the current Viral Radar core-source plan" }
   }
 ]
