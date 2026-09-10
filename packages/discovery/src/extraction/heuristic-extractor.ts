@@ -36,18 +36,12 @@ function cleanPhrase(value: string): string {
   return cleaned
 }
 
-function isTitleCaseHeavy(text: string): boolean {
-  const words = text.match(/\b[A-Za-z][A-Za-z0-9'_-]*\b/g) ?? []
-  if (words.length < 4) return false
-  const titleCase = words.filter((word) => /^[A-Z]/.test(word)).length
-  return titleCase / words.length >= 0.65
-}
-
 function isNameLikePhrase(value: string): boolean {
   const words = value.trim().split(/\s+/).filter(Boolean)
   if (words.length === 0 || words.length > 5) return false
   return words.every((word) =>
     /^[A-Z][A-Za-z0-9.+#'_-]*$/.test(word)
+    || /^[a-z]+[A-Z][A-Za-z0-9.+#'_-]*$/.test(word)
     || /^[A-Z]{2,}[0-9.-]*$/.test(word)
     || /^\d+(?:\.\d+)*$/.test(word)
     || /^(?:of|for|and|&)$/.test(word)
@@ -59,6 +53,7 @@ function extractDistinctiveTokens(text: string): string[] {
   return words.filter((word) =>
     /[A-Za-z]+[-_.+]?[0-9]+[A-Za-z0-9.+_-]*/.test(word)
     || /^[A-Z][a-z]+[A-Z][A-Za-z0-9]*$/.test(word)
+    || /^[a-z]+[A-Z][A-Za-z0-9]*$/.test(word)
     || /^[A-Za-z]+\.[A-Za-z0-9.-]+$/.test(word)
   )
 }
@@ -70,7 +65,7 @@ function extractTitlePhrases(text: string): string[] {
 }
 
 function extractVersionedPhrases(text: string): string[] {
-  return [...text.matchAll(/\b(?:[A-Z][A-Za-z0-9.+#'_-]*)(?:\s+(?:[A-Z][A-Za-z0-9.+#'_-]*)){0,3}\s+(?:v?\d+(?:\.\d+){0,2})\b/g)]
+  return [...text.matchAll(/\b(?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)(?:\s+(?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)){0,3}\s+(?:v?\d+(?:\.\d+){0,2})\b/g)]
     .map((match) => match[0])
     .filter(isNameLikePhrase)
 }
@@ -80,13 +75,13 @@ function extractShowHnName(title: string): string[] {
   if (!match?.[1]) return []
   const remainder = match[1].trim()
   const first = remainder
-    .split(/\s+[–—-]\s+|\s*\|\s*|:\s+|\s+(?:where|that|which|for|to|with|using)\s+/i)[0]
+    .split(/\s*[–—]\s*|\s+-\s+|\s*\|\s*|:\s+|\s+(?:where|that|which|for|to|with|using)\s+/i)[0]
     ?.trim()
   return first && isNameLikePhrase(first) ? [first] : []
 }
 
 function extractLeadingNamedPhrase(title: string): string[] {
-  const match = title.match(/^(.{2,80}?)(?:\s+[–—-]\s+|\s*\|\s*|:\s+)/)
+  const match = title.match(/^(.{2,80}?)(?:\s*[–—]\s*|\s+-\s+|\s*\|\s*|:\s+)/)
   const first = match?.[1]?.trim()
   if (!first || /^show\s+hn$/i.test(first) || !isNameLikePhrase(first)) return []
   return [first]
