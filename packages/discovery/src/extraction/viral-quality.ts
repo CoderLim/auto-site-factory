@@ -181,6 +181,14 @@ function hasExplicitNamingContext(name: string, signal: StoredSignal): boolean {
   return new RegExp(`\\b(?:${verbs})\\s+(?:the\\s+)?["'“]?${escaped}["'”]?(?=$|[,;:|–—-]|\\s+(?:for|to|with|that|which|where|as)\\b)`, "i").test(text)
 }
 
+function hasBrandVersionLaunchContext(name: string, signal: StoredSignal): boolean {
+  const title = signal.title?.trim() ?? ""
+  const match = title.match(/^([A-Z][A-Za-z0-9.+#'_-]*(?:\s+[A-Z][A-Za-z0-9.+#'_-]*){0,2})\s+(?:launch(?:es|ed|ing)?|introduce(?:s|d|ing)?|release(?:s|d|ing)?|unveil(?:s|ed|ing)?|announce(?:s|d|ing)?)\s+(v?\d+(?:\.\d+){0,3})(?:\s+(flash|pro|max|ultra|mini|air|plus|se|turbo|lite|preview|alpha|beta))?\b/i)
+  if (!match?.[1] || !match?.[2]) return false
+  const expected = `${match[1]} ${match[2]}${match[3] ? ` ${match[3]}` : ""}`
+  return normalizeToken(expected) === normalizeToken(name)
+}
+
 function hasUsageContext(name: string, signal: StoredSignal): boolean {
   if (name.length < 4 || /\s/.test(name)) return false
   const text = `${signal.title ?? ""}\n${signal.content ?? ""}`.slice(0, 1000)
@@ -241,6 +249,7 @@ export function isHighQualityViralEntity(entity: ExtractedEntity, signal: Stored
   if (isTrustedDirectEntity(name, signal)) return true
   if (isHnLaunchEntity(name, signal)) return true
   if (hasExplicitNamingContext(name, signal)) return true
+  if (hasBrandVersionLaunchContext(name, signal)) return true
   if (hasUsageContext(name, signal)) return true
   if (candidateMatchesDedicatedUrl(name, signal)) return true
   if (hasNamedTitlePrefix(name, signal)) return true
