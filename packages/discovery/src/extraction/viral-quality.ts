@@ -31,7 +31,7 @@ const MATURE_ROOT_ENTITIES = new Set([
 const NON_ENTITY_HOSTS = new Set([
   "bbc.com", "bloomberg.com", "engadget.com", "forbes.com", "medium.com", "news.ycombinator.com",
   "nytimes.com", "osnews.com", "reddit.com", "reuters.com", "substack.com", "techcrunch.com", "techmeme.com",
-  "theverge.com", "twitter.com", "wikipedia.org", "www.wikipedia.org", "x.com", "youtube.com"
+  "theverge.com", "twitter.com", "wikipedia.org", "x.com", "youtube.com"
 ])
 
 const GEOGRAPHIES = new Set([
@@ -68,9 +68,12 @@ const SENTENCE_WORDS = new Set([
   "is", "kept", "lost", "making", "outsmarting", "running", "saves", "set", "should", "using", "was",
   "were", "will", "working", "would", "writing"
 ])
-const VARIANT_CONTINUATIONS = [
-  "Pro", "Max", "Ultra", "Mini", "Air", "Plus", "SE", "Flash", "Turbo", "Lite", "Preview", "Alpha", "Beta",
-  "Exp", "One\\b", "Family\\b", "Series\\s+\\d+", "v?\\d+(?:\\.\\d+)*"
+
+// These continuations materially change the product/model identity. Prerelease labels such as
+// Alpha/Beta/Preview are intentionally omitted because extraction normalizes them away (e.g. Multigres v0.1 Alpha -> Multigres v0.1).
+const IDENTITY_CONTINUATIONS = [
+  "Pro", "Max", "Ultra", "Mini", "Air", "Plus", "SE", "Flash", "Turbo", "Lite", "Exp",
+  "One\\b", "Family\\b", "Series\\s+\\d+", "v?\\d+(?:\\.\\d+)*"
 ].join("|")
 
 function normalizeToken(value: string): string {
@@ -165,7 +168,7 @@ function candidateMatchesDedicatedUrl(name: string, signal: StoredSignal): boole
       const pathParts = parsed.pathname.split("/").filter(Boolean)
       if (pathParts.some((part) => normalizeToken(part) === normalized)) return true
     } catch {
-      // Ignore malformed source URLs.
+      // malformed URLs are not evidence
     }
   }
   return false
@@ -175,7 +178,7 @@ function hasMoreSpecificContinuation(name: string, signal: StoredSignal): boolea
   const title = signal.title ?? ""
   if (!title) return false
   const escaped = escapeRegExp(name)
-  return new RegExp(`\\b${escaped}\\s+(?:${VARIANT_CONTINUATIONS})\\b`, "i").test(title)
+  return new RegExp(`\\b${escaped}\\s+(?:${IDENTITY_CONTINUATIONS})\\b`, "i").test(title)
 }
 
 function isUnbrandedVersionFragment(name: string, signal: StoredSignal): boolean {
@@ -196,8 +199,7 @@ function hasStaleYearMarker(signal: StoredSignal): boolean {
 function hasExplicitNamingContext(name: string, signal: StoredSignal): boolean {
   const text = `${signal.title ?? ""}\n${signal.content ?? ""}`.slice(0, 1800)
   const escaped = escapeRegExp(name)
-  const verbs = STRONG_NAMING_VERBS.join("|")
-  return new RegExp(`\\b(?:${verbs})\\s+(?:the\\s+)?["'“]?${escaped}["'”]?(?=$|[,;:|–—-]|\\s+(?:for|to|with|that|which|where|as)\\b)`, "i").test(text)
+  return new RegExp(`\\b(?:${STRONG_NAMING_VERBS.join("|")})\\s+(?:the\\s+)?["'“]?${escaped}["'”]?(?=$|[,;:|–—-]|\\s+(?:for|to|with|that|which|where|as)\\b)`, "i").test(text)
 }
 
 function hasBrandVersionLaunchContext(name: string, signal: StoredSignal): boolean {
