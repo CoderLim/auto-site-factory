@@ -3,6 +3,7 @@ import { DiscoveryRepository, KeywordRepository, SitemapRepository, SteamReposit
 
 const DEFAULT_REPOSITORY = "CoderLim/auto-site-factory"
 const DEFAULT_WORKFLOW = "discovery-cron.yml"
+const VIRAL_WORKFLOW = "viral-discovery-cron.yml"
 const DEFAULT_REF = "main"
 
 function json(body, status = 200) {
@@ -45,14 +46,14 @@ async function withRepos(env, callback) {
   }
 }
 
-async function dispatchDiscovery(env) {
+async function dispatchDiscovery(env, workflowFile = DEFAULT_WORKFLOW) {
   const token = String(env.GITHUB_DISPATCH_TOKEN ?? "").trim()
   if (!token) {
     throw new Error("Missing Cloudflare secret: GITHUB_DISPATCH_TOKEN")
   }
 
   const repository = String(env.GITHUB_REPOSITORY ?? DEFAULT_REPOSITORY).trim()
-  const workflow = String(env.GITHUB_WORKFLOW_FILE ?? DEFAULT_WORKFLOW).trim()
+  const workflow = String(workflowFile || env.GITHUB_WORKFLOW_FILE || DEFAULT_WORKFLOW).trim()
   const ref = String(env.GITHUB_REF ?? DEFAULT_REF).trim()
   const endpoint = `https://api.github.com/repos/${repository}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`
 
@@ -89,11 +90,18 @@ export async function onRequest(context) {
     if (request.method === "GET" && url.pathname === "/api/discovery/candidates") {
       const range = url.searchParams.get("range")
       const sourceType = url.searchParams.get("sourceType") || undefined
+      const scope = url.searchParams.get("scope") || undefined
       return await withRepos(env, async ({ discovery }) => {
-        const [candidates, enabledTargetCount] = await Promise.all([
-          discovery.listCandidates(sinceForRange(range), { sourceType }),
+        const [rawCandidates, enabledTargetCount] = await Promise.all([
+          discovery.listCandidates(sinceForRange(range), {
+            sourceType,
+            limit: scope ? 5000 : undefined
+          }),
           discovery.countEnabledTargets()
         ])
+        const candidates = scope
+          ? rawCandidates.filter((candidate) => candidate.scope === scope)
+          : rawCandidates
         return json({ candidates, enabledTargetCount })
       })
     }
@@ -184,8 +192,13 @@ export async function onRequest(context) {
       return await withRepos(env, async ({ sitemap }) => json({ anomalies: await sitemap.listAnomalies() }))
     }
 
+    if (request.method === "POST" && url.pathname === "/api/discovery/viral/run") {
+      const result = await dispatchDiscovery(env, VIRAL_WORKFLOW)
+      return json({ status: "queued", ...result }, 202)
+    }
+
     if (request.method === "POST" && url.pathname === "/api/sitemap/run") {
-      const result = await dispatchDiscovery(env)
+      const result = await dispatchDiscovery(env, String(env.GITHUB_WORKFLOW_FILE ?? DEFAULT_WORKFLOW).trim())
       return json({ status: "queued", ...result }, 202)
     }
 
