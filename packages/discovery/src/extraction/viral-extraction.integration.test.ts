@@ -42,7 +42,8 @@ test("HN article noise produces no viral entity", async () => {
     ["National Archives locations set to close without tribal consultation", "https://ictnews.org/news/these-records-are-priceless-3-national-archives-locations-set-to-close-without-tribal-consultation/"],
     ["Time, Clocks, and the Ordering of Events in a Distributed System (1978) [pdf]", "https://lamport.azurewebsites.net/pubs/time-clocks.pdf"],
     ["Natural Number Game (Lean4 Tutorial)", "https://adam.math.hhu.de/#/g/hhu-adam/NNG4"],
-    ["Trezor's Email provider has been breached", "https://twitter.com/CR1337/status/2097841222954184954"]
+    ["Trezor's Email provider has been breached", "https://twitter.com/CR1337/status/2097841222954184954"],
+    ["Navier–Stokes, AI and the future of research in mathematics [pdf]", "https://bms.ulb.ac.be/data/uploads/untitled.pdf"]
   ] as const
 
   for (const [title, url] of noisy) {
