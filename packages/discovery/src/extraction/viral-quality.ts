@@ -195,7 +195,9 @@ function hasNamedTitlePrefix(name: string, signal: StoredSignal): boolean {
   const title = signal.title?.trim() ?? ""
   if (!title) return false
   const escaped = escapeRegExp(name)
-  return new RegExp(`^${escaped}(?:\\s*[|:–—>]|\\s+-\\s+|\\s+(?:launch|launched|beta|app|game|tool)\\b)`, "i").test(title)
+  // Generic titles require a real separator. Zero-space en/em dashes are often lexical compounds
+  // such as Navier–Stokes; compact Show HN separators are handled separately by isShowHnEntity().
+  return new RegExp(`^${escaped}(?:\\s*[|:]\\s*|\\s+[–—-]\\s+|\\s+>\\s+|\\s+(?:launch|launched|beta|app|game|tool)\\b)`, "i").test(title)
 }
 
 function hasSpecificTitleStart(name: string, signal: StoredSignal): boolean {
@@ -219,7 +221,8 @@ function isBlockedName(name: string): boolean {
   if (HARD_NOISE.has(phrase) || SOURCE_BOILERPLATE.has(phrase) || GEOGRAPHIES.has(phrase)) return true
   if (isVersionOnly(name) || isDottedAcronym(name) || hasPossessiveFragment(name)) return true
   if (single && GENERIC_TOPICS.has(phrase)) return true
-  if (single && MATURE_ROOT_ENTITIES.has(phrase) && !isSpecificVariant(name)) return true
+  // Exact mature roots are always context, never the new opportunity. Specific variants are different names.
+  if (single && MATURE_ROOT_ENTITIES.has(phrase)) return true
   if (single && isPlainAcronym(name) && !isSpecificVariant(name)) return true
   return false
 }
