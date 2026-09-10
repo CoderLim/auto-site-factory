@@ -6,6 +6,7 @@ const STOP = new Set([
 ])
 const INTENT_SUFFIX = /\b(?:guide|wiki|codes?|tier list|release date|download|apk|price|review|gameplay|trailer|how to|get|fast|today|update|patch notes?)\b/gi
 const GENERIC_PREFIX = /^(?:new|best|official|latest|the|this|that)\s+/i
+const VERSIONED_NOISE_PREFIX = /^(?:release|version|getting|using|making|building|running|writing|creating)\s+/i
 const ACTION_VERBS = new Set([
   "announce", "announces", "announced", "announcing",
   "build", "builds", "built", "building",
@@ -86,8 +87,8 @@ function takeNamedRun(value: string, maxTokens = 6): string | undefined {
   return phrase && isNameLikePhrase(phrase) ? phrase : undefined
 }
 
-function extractShowHnName(title: string): string[] {
-  const match = title.match(/^Show\s+HN:\s*(.+)$/i)
+function extractHnLaunchName(title: string): string[] {
+  const match = title.match(/^(?:Show|How)\s+HN:\s*(.+)$/i)
   if (!match?.[1]) return []
   const first = takeNamedRun(match[1], 6)
   return first ? [first] : []
@@ -96,7 +97,7 @@ function extractShowHnName(title: string): string[] {
 function extractLeadingNamedPhrase(title: string): string[] {
   const match = title.match(/^(.{2,90}?)(?:\s*[–—]\s*|\s+-\s+|\s*\|\s*|:\s+)/)
   const first = cleanPhrase(match?.[1]?.trim() ?? "")
-  if (!first || /^show\s+hn$/i.test(first) || /^ask\s+hn$/i.test(first) || !isNameLikePhrase(first)) return []
+  if (!first || /^(?:show|ask|how)\s+hn$/i.test(first) || !isNameLikePhrase(first)) return []
   return [first]
 }
 
@@ -112,7 +113,15 @@ function extractVersionedPhrases(title: string): string[] {
   const matches = [...title.matchAll(/\b((?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)(?:\s+(?:[A-Z][A-Za-z0-9.+#'_-]*|[a-z]+[A-Z][A-Za-z0-9.+#'_-]*)){0,3}\s+(?:v?\d+(?:\.\d+){0,3}|\d+)(?:\s+(?:Pro|Max|Ultra|Mini|Air|Plus|SE|Series\s+\d+))?)\b/g)]
     .map((match) => cleanPhrase(match[1] ?? ""))
     .filter(Boolean)
+    .filter((value) => !VERSIONED_NOISE_PREFIX.test(value))
   return matches.filter(isNameLikePhrase)
+}
+
+function extractBrandVersionLaunch(title: string): string[] {
+  const match = title.match(/^([A-Z][A-Za-z0-9.+#'_-]*(?:\s+[A-Z][A-Za-z0-9.+#'_-]*){0,2})\s+(?:launch(?:es|ed|ing)?|introduce(?:s|d|ing)?|release(?:s|d|ing)?|unveil(?:s|ed|ing)?|announce(?:s|d|ing)?)\s+(v?\d+(?:\.\d+){0,3})(?:\s+(flash|pro|max|ultra|mini|air|plus|se|turbo|lite|preview|alpha|beta))?\b/i)
+  if (!match?.[1] || !match?.[2]) return []
+  const variant = match[3] ? `${match[3][0]?.toUpperCase() ?? ""}${match[3].slice(1).toLowerCase()}` : ""
+  return [`${match[1]} ${match[2]}${variant ? ` ${variant}` : ""}`]
 }
 
 function extractVerbNamedPhrases(text: string): string[] {
@@ -152,10 +161,11 @@ function extractViralCandidates(signal: StoredSignal): string[] {
   return [
     ...direct,
     ...productHuntTitle,
-    ...(title ? extractShowHnName(title) : []),
+    ...(title ? extractHnLaunchName(title) : []),
     ...(title ? extractLeadingNamedPhrase(title) : []),
     ...(title ? extractShortWholeTitle(title) : []),
     ...(title ? extractVersionedPhrases(title) : []),
+    ...(title ? extractBrandVersionLaunch(title) : []),
     ...extractVerbNamedPhrases(text),
     ...extractQuotedAnnouncement(text)
   ]
