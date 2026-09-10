@@ -180,23 +180,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-function focusViralRadar(result: { candidates: DiscoveryCandidate[]; enabledTargetCount: number }) {
-  if (window.location.pathname !== "/discovery/viral") return result
-  return {
-    ...result,
-    candidates: result.candidates.filter((candidate) =>
-      candidate.scope === "viral" && candidate.stage !== "DISCOVERED"
-    )
-  }
-}
-
 export const api = {
   candidates: (range: string, sourceType?: string) => {
     const params = new URLSearchParams({ range })
     if (sourceType) params.set("sourceType", sourceType)
+    if (window.location.pathname === "/discovery/viral") params.set("scope", "viral")
     return request<{ candidates: DiscoveryCandidate[]; enabledTargetCount: number }>(
       `/api/discovery/candidates?${params}`
-    ).then(focusViralRadar)
+    )
   },
   keywords: (range: string, options: { sourceType?: string; status?: string } = {}) => {
     const params = new URLSearchParams({ range })
@@ -237,7 +228,12 @@ export const api = {
   targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),
   runs: () => request<{ runs: SitemapRun[] }>("/api/sitemap/runs"),
   anomalies: () => request<{ anomalies: SitemapAnomaly[] }>("/api/sitemap/anomalies"),
-  run: () => request<{ status: string; workflow_run_id?: number; html_url?: string }>("/api/sitemap/run", { method: "POST" }),
+  run: () => {
+    const endpoint = window.location.pathname === "/discovery/viral"
+      ? "/api/discovery/viral/run"
+      : "/api/sitemap/run"
+    return request<{ status: string; workflow_run_id?: number; html_url?: string }>(endpoint, { method: "POST" })
+  },
   updateTarget: (target: SitemapTarget) => request(`/api/sitemap/targets/${encodeURIComponent(target.id)}`, {
     method: "PUT",
     body: JSON.stringify({
