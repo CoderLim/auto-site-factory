@@ -45,6 +45,85 @@ test("ignores a generic New prefix but keeps the novel entity", () => {
   assert.ok(!entities.some((entity) => entity.name === "New"))
 })
 
+test("extracts Show HN product name and ignores descriptive topic words", () => {
+  const good = extractHeuristicEntities({
+    ...base,
+    sourceType: "hn" as const,
+    sourceTargetId: "hn-newstories-viral",
+    scope: "viral",
+    title: "Show HN: Emailclaw–Email lovers' AI agent that creates scheduled tasks",
+    url: "https://github.com/emailclaw/emailclaw"
+  })
+  assert.ok(good.some((entity) => entity.name === "Emailclaw"))
+  assert.ok(!good.some((entity) => entity.name === "Email"))
+
+  const generic = extractHeuristicEntities({
+    ...base,
+    sourceType: "hn" as const,
+    sourceTargetId: "hn-newstories-viral",
+    scope: "viral",
+    title: "An app design that combines Email and Reddit to replace Email"
+  })
+  assert.ok(!generic.some((entity) => entity.name === "Email" || entity.name === "Reddit"))
+})
+
+test("preserves the full versioned product instead of the mature root", () => {
+  const airpods = extractHeuristicEntities({
+    ...base,
+    sourceType: "hn" as const,
+    sourceTargetId: "hn-newstories-viral",
+    scope: "viral",
+    title: "AirPods 5",
+    url: "https://www.apple.com/airpods-5/"
+  })
+  assert.ok(airpods.some((entity) => entity.name === "AirPods 5"))
+
+  const watch = extractHeuristicEntities({
+    ...base,
+    sourceType: "hn" as const,
+    sourceTargetId: "hn-newstories-viral",
+    scope: "viral",
+    title: "Apple Watch Series 12",
+    url: "https://www.apple.com/apple-watch-series-12/"
+  })
+  assert.ok(watch.some((entity) => entity.name === "Apple Watch Series 12"))
+})
+
+test("keeps a short exact camel-case product title", () => {
+  const entities = extractHeuristicEntities({
+    ...base,
+    sourceType: "hn" as const,
+    sourceTargetId: "hn-newstories-viral",
+    scope: "viral",
+    title: "iPhone Duo",
+    url: "https://www.apple.com/iphone-duo/"
+  })
+  assert.ok(entities.some((entity) => entity.name === "iPhone Duo"))
+})
+
+test("does not turn current HN news topic words into entities", () => {
+  const noisyTitles = [
+    "Google picks Finland for its largest single investment in Europe",
+    "Secret DHS Unit Pulling People over Based on Their Financial Data",
+    "'Gambling with our lives': AI researcher quits Anthropic",
+    "Reddit saves your keystrokes in text boxes",
+    "Automating culling – 3,478 RAW photos with 977 vision calls"
+  ]
+
+  for (const title of noisyTitles) {
+    const entities = extractHeuristicEntities({
+      ...base,
+      sourceType: "hn" as const,
+      sourceTargetId: "hn-newstories-viral",
+      scope: "viral",
+      title
+    })
+    for (const noise of ["Finland", "DHS", "Gambling", "Reddit", "RAW"]) {
+      assert.ok(!entities.some((entity) => entity.name === noise), `${title} -> ${noise}`)
+    }
+  }
+})
+
 test("does not turn title-case YouTube prose into fake entities", () => {
   const noisyTitles = [
     "Save Yourself In The Biggest Survival Challenge",
@@ -75,5 +154,5 @@ test("does not classify every viral entity from unrelated title words", () => {
     title: "AWS benchmark reveals an Invisible World of machine evolution"
   })
   const aws = entities.find((entity) => entity.name === "AWS")
-  assert.equal(aws?.type, "OTHER")
+  assert.equal(aws?.type, undefined)
 })
