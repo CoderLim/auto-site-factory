@@ -20,7 +20,7 @@ jobs:
         run: npx --yes wrangler@4.115.0 pages functions build functions --outfile=/tmp/pages-worker.js --compatibility-date=2026-08-12 --compatibility-flags=nodejs_compat
 
   ph-temp-pull:
-    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: temporary Product Hunt relay')
+    if: "${{ github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: temporary Product Hunt relay') }}"
     permissions:
       contents: write
     runs-on: ubuntu-latest

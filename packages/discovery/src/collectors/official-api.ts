@@ -61,10 +61,15 @@ export const officialApiCollector: Collector = {
     const publishedAtField = configString(target.config, "publishedAtField", "created_at")
     const contentField = configString(target.config, "contentField")
     const urlField = configString(target.config, "urlField")
+    const authorField = configString(target.config, "authorField")
+    const includeField = configString(target.config, "includeField")
+    const includeValues = new Set(configStringArray(target.config, "includeValues"))
     const directEntity = configBoolean(target.config, "directEntity", true)
     const nameTransform = configString(target.config, "nameTransform", "identity")
     const overlapMinutes = Math.max(0, configNumber(target.config, "cursorOverlapMinutes", 10))
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
+    const platform = configString(target.config, "platform", target.sourceType)
+    const sourceRole = configString(target.config, "sourceRole", "discovery")
 
     const lastPublishedAt = typeof cursor?.lastPublishedAt === "string" ? cursor.lastPublishedAt : undefined
     const cutoff = lastPublishedAt
@@ -74,6 +79,11 @@ export const officialApiCollector: Collector = {
     const candidateSignals = items.flatMap((item) => {
       if (!item || typeof item !== "object") return []
       const record = item as Record<string, unknown>
+      if (includeField && includeValues.size > 0) {
+        const filterValue = getPath(record, includeField)
+        if (!includeValues.has(String(filterValue ?? ""))) return []
+      }
+
       const id = getPath(record, idField)
       const rawName = firstString(record, nameFields)
       if ((typeof id !== "string" && typeof id !== "number") || !rawName) return []
@@ -84,13 +94,18 @@ export const officialApiCollector: Collector = {
       const content = typeof contentValue === "string" ? contentValue : JSON.stringify(record)
       const urlValue = urlField ? getPath(record, urlField) : undefined
       const signalUrl = typeof urlValue === "string" ? urlValue : undefined
+      const authorValue = authorField ? getPath(record, authorField) : undefined
+      const author = typeof authorValue === "string" && authorValue.trim() ? authorValue.trim() : undefined
       return [makeSignal("official_api", target, String(id), {
         title: name,
         content,
+        author,
         url: signalUrl,
         publishedAt,
         discoveredAt: context.now,
         metadata: {
+          platform,
+          sourceRole,
           ...(directEntity ? { directEntity: name, entityType: configString(target.config, "entityType", "OTHER") } : {}),
           rawEntityName: rawName,
           raw: record

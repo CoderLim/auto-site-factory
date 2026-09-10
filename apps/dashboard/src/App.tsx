@@ -13,7 +13,7 @@ import {
   type SteamGame
 } from "./api"
 
-type Tab = "keywords" | "discover" | "steam" | "appcharts" | "sites" | "runs" | "anomalies"
+type Tab = "keywords" | "viral" | "discover" | "steam" | "appcharts" | "sites" | "runs" | "anomalies"
 const ranges = [
   { value: "1d", label: "最近 1 天" },
   { value: "7d", label: "最近 7 天" },
@@ -22,7 +22,9 @@ const ranges = [
 const steamRanges = [...ranges, { value: "90d", label: "最近 90 天" }]
 
 function tabForPath(): Tab {
-  return window.location.pathname === "/discovery/apps" ? "appcharts" : "keywords"
+  if (window.location.pathname === "/discovery/apps") return "appcharts"
+  if (window.location.pathname === "/discovery/viral") return "viral"
+  return "keywords"
 }
 
 function formatTime(value?: string) {
@@ -37,6 +39,20 @@ function formatNumber(value?: number) {
 function formatDelta(value?: number) {
   if (value == null) return "—"
   return `${value > 0 ? "+" : ""}${value.toLocaleString()}`
+}
+
+function viralStageLabel(stage: DiscoveryCandidate["stage"]) {
+  if (stage === "BREAKOUT") return "BREAKOUT"
+  if (stage === "MEDIA_PICKUP") return "MEDIA PICKUP"
+  if (stage === "CROSS_PLATFORM") return "CROSS PLATFORM"
+  if (stage === "ACCELERATING") return "ACCELERATING"
+  return "DISCOVERED"
+}
+
+function corroborationLabel(value: DiscoveryCandidate["corroboration"]) {
+  if (value === "organic") return "自然扩散"
+  if (value === "launch_only") return "官方发布"
+  return "单一来源"
 }
 
 function FollowerSparkline({ points }: { points: SteamGame["followersTrend"] }) {
@@ -136,7 +152,11 @@ export default function App() {
 
   const selectTab = (nextTab: Tab) => {
     setTab(nextTab)
-    const nextPath = nextTab === "appcharts" ? "/discovery/apps" : "/"
+    const nextPath = nextTab === "appcharts"
+      ? "/discovery/apps"
+      : nextTab === "viral"
+        ? "/discovery/viral"
+        : "/"
     if (window.location.pathname !== nextPath) window.history.pushState({}, "", nextPath)
   }
 
@@ -201,7 +221,7 @@ export default function App() {
 
   useEffect(() => {
     if (loading) return
-    if (tab === "discover") void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    if (tab === "discover" || tab === "viral") void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
     if (tab === "keywords") void refreshKeywords().catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [tab, range, sourceType, keywordStatus])
 
@@ -218,6 +238,16 @@ export default function App() {
     }
     return seen.size
   }, [candidates])
+
+  const viralCandidates = useMemo(() => candidates
+    .filter((candidate) => candidate.scope === "viral")
+    .sort((a, b) => b.viralScore - a.viralScore), [candidates])
+
+  const viralStats = useMemo(() => ({
+    actionable: viralCandidates.filter((candidate) => candidate.stage !== "DISCOVERED").length,
+    organic: viralCandidates.filter((candidate) => candidate.corroboration === "organic").length,
+    breakout: viralCandidates.filter((candidate) => candidate.stage === "BREAKOUT" || candidate.stage === "MEDIA_PICKUP").length
+  }), [viralCandidates])
 
   const keywordSourceTypeCount = useMemo(() => {
     const seen = new Set<string>()
@@ -314,18 +344,20 @@ export default function App() {
   }
 
   const pageTitle = tab === "keywords" ? "新增关键词"
-    : tab === "discover" ? "发现候选"
-      : tab === "steam" ? "Steam 游戏"
-        : tab === "appcharts" ? "App Charts"
-          : tab === "sites" ? "Sitemap 管理"
-            : tab === "runs" ? "运行记录"
-              : "异常中心"
+    : tab === "viral" ? "Viral Radar"
+      : tab === "discover" ? "发现候选"
+        : tab === "steam" ? "Steam 游戏"
+          : tab === "appcharts" ? "App Charts"
+            : tab === "sites" ? "Sitemap 管理"
+              : tab === "runs" ? "运行记录"
+                : "异常中心"
 
   const eyebrow = tab === "keywords" ? "LAYER 2 / KEYWORDS"
-    : tab === "discover" ? "LAYER 1 / DISCOVERY"
-      : tab === "steam" ? "DISCOVERY / STEAM"
-        : tab === "appcharts" ? "DISCOVERY / APP STORE"
-          : "DISCOVERY / SITEMAP"
+    : tab === "viral" ? "DISCOVERY / VIRAL RADAR"
+      : tab === "discover" ? "LAYER 1 / DISCOVERY"
+        : tab === "steam" ? "DISCOVERY / STEAM"
+          : tab === "appcharts" ? "DISCOVERY / APP STORE"
+            : "DISCOVERY / SITEMAP"
 
   return (
     <div className="shell">
@@ -333,6 +365,7 @@ export default function App() {
         <div className="brand"><span className="brand-mark">ASF</span><div><strong>Auto Site Factory</strong><small>Discovery</small></div></div>
         <nav>
           <button className={tab === "keywords" ? "active" : ""} onClick={() => selectTab("keywords")}>新增关键词</button>
+          <button className={tab === "viral" ? "active" : ""} onClick={() => selectTab("viral")}>🔥 Viral Radar</button>
           <button className={tab === "discover" ? "active" : ""} onClick={() => selectTab("discover")}>发现候选</button>
           <button className={tab === "steam" ? "active" : ""} onClick={() => selectTab("steam")}>Steam 游戏</button>
           <button className={tab === "appcharts" ? "active" : ""} onClick={() => selectTab("appcharts")}>App Charts</button>
@@ -399,6 +432,43 @@ export default function App() {
                 </tbody>
               </table>
               {keywords.length === 0 && <div className="empty">还没有符合当前条件的关键词候选。下一次 Discovery Cron 会自动生成和回填。</div>}
+            </div>
+          </section>
+        ) : tab === "viral" ? (
+          <section>
+            <div className="alert info">只看 scope=viral 的实体。优先关注 ACCELERATING、CROSS PLATFORM、MEDIA PICKUP 和 BREAKOUT；“官方发布”会降权，“自然扩散”才算真正跨平台验证。</div>
+            <div className="toolbar">
+              <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
+              <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                <option value="">全部来源</option>
+                {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+              </select>
+            </div>
+            <div className="stats">
+              <article><strong>{viralCandidates.length}</strong><span>Viral 实体</span></article>
+              <article><strong>{viralStats.actionable}</strong><span>正在加速</span></article>
+              <article><strong>{viralStats.organic}</strong><span>自然扩散</span></article>
+              <article><strong>{viralStats.breakout}</strong><span>媒体 / 爆发</span></article>
+            </div>
+            <div className="card table-card">
+              <table>
+                <thead><tr><th>实体</th><th>Viral Score</th><th>阶段</th><th>传播判断</th><th>平台</th><th>作者</th><th>提及</th><th>首次发现</th></tr></thead>
+                <tbody>
+                  {viralCandidates.map((candidate) => (
+                    <tr key={candidate.id}>
+                      <td><strong>{candidate.name}</strong><small className="muted">{candidate.entityType}</small></td>
+                      <td><span className={`score score-${candidate.viralScore >= 75 ? "high" : candidate.viralScore >= 55 ? "mid" : "low"}`}>{candidate.viralScore}</span></td>
+                      <td><span className={`status ${candidate.stage === "BREAKOUT" || candidate.stage === "MEDIA_PICKUP" ? "success" : candidate.stage === "DISCOVERED" ? "" : "running"}`}>{viralStageLabel(candidate.stage)}</span></td>
+                      <td>{corroborationLabel(candidate.corroboration)}</td>
+                      <td>{candidate.platforms.join(" → ") || "—"}</td>
+                      <td>{candidate.authorCount}</td>
+                      <td>{candidate.mentionCount}</td>
+                      <td>{formatTime(candidate.firstSeenAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {viralCandidates.length === 0 && <div className="empty">当前时间范围还没有 Viral Radar 候选。先运行一轮 Viral Discovery。</div>}
             </div>
           </section>
         ) : tab === "discover" ? (
