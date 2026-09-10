@@ -144,5 +144,24 @@
       "maxUrls": 100000,
       "maxNewUrls": 50
     }
+  },
+  {
+    "id": "sitemap-itch-io",
+    "sourceType": "sitemap",
+    "name": "itch.io Sitemap",
+    "scope": "web-games",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "sitemapUrl": "https://itch.io/sitemap.xml",
+      "entityType": "GAME",
+      "baselineOnFirstRun": true,
+      "fetchPageMetadata": true,
+      "curlFallback": true,
+      "timeoutSeconds": 60,
+      "maxSitemaps": 200,
+      "maxUrls": 100000,
+      "maxNewUrls": 50
+    }
   }
 ]
