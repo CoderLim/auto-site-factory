@@ -24,8 +24,6 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SOURCE_TARGETS_FILE: config/viral-source-targets.json
-      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
-      TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
       # Re-score the active discovery window on every run. A 30-day replay made each cron too slow
       # and delayed noise removal; long historical backfills should be run separately when needed.
       VIRAL_REVALIDATE_HOURS: 48
@@ -59,17 +57,12 @@ jobs:
       - name: Sync viral source targets
         run: node apps/worker/dist/sync-targets.js
 
-      - name: Collect zero-cost discovery river
+      - name: Collect Viral Radar core discovery river
         run: |
           node apps/worker/dist/index.js --once --source=hn
           node apps/worker/dist/index.js --once --source=reddit
           node apps/worker/dist/index.js --once --source=official_api
           node apps/worker/dist/index.js --once --source=rss
-          node apps/worker/dist/index.js --once --source=youtube
-
-      - name: Collect Twitch when free API credentials are configured
-        if: ${{ env.TWITCH_CLIENT_ID != '' && env.TWITCH_CLIENT_SECRET != '' }}
-        run: node apps/worker/dist/index.js --once --source=twitch
 
       - name: Revalidate recent viral candidates with the current entity-quality rules
         run: node apps/worker/dist/revalidate-viral.js
