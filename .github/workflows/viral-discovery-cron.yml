@@ -24,8 +24,6 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SOURCE_TARGETS_FILE: config/viral-source-targets.json
-      # Re-score the active discovery window on every run. A 30-day replay made each cron too slow
-      # and delayed noise removal; long historical backfills should be run separately when needed.
       VIRAL_REVALIDATE_HOURS: 48
       # Intentionally omit LLM_API_* here: this workflow is designed to stay $0.
 
@@ -59,10 +57,10 @@ jobs:
 
       - name: Collect Viral Radar core discovery river
         run: |
-          node apps/worker/dist/index.js --once --source=hn
-          node apps/worker/dist/index.js --once --source=reddit
-          node apps/worker/dist/index.js --once --source=official_api
-          node apps/worker/dist/index.js --once --source=rss
+          node apps/worker/dist/index.js --once --source=hn --scope=viral
+          node apps/worker/dist/index.js --once --source=reddit --scope=viral
+          node apps/worker/dist/index.js --once --source=official_api --scope=viral
+          node apps/worker/dist/index.js --once --source=rss --scope=viral
 
       - name: Revalidate recent viral candidates with the current entity-quality rules
         run: node apps/worker/dist/revalidate-viral.js
