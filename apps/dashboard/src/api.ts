@@ -180,13 +180,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+function focusViralRadar(result: { candidates: DiscoveryCandidate[]; enabledTargetCount: number }) {
+  if (window.location.pathname !== "/discovery/viral") return result
+  return {
+    ...result,
+    candidates: result.candidates.filter((candidate) =>
+      candidate.scope === "viral" && candidate.stage !== "DISCOVERED"
+    )
+  }
+}
+
 export const api = {
   candidates: (range: string, sourceType?: string) => {
     const params = new URLSearchParams({ range })
     if (sourceType) params.set("sourceType", sourceType)
     return request<{ candidates: DiscoveryCandidate[]; enabledTargetCount: number }>(
       `/api/discovery/candidates?${params}`
-    )
+    ).then(focusViralRadar)
   },
   keywords: (range: string, options: { sourceType?: string; status?: string } = {}) => {
     const params = new URLSearchParams({ range })
