@@ -6,7 +6,8 @@ const STOP = new Set([
 ])
 const INTENT_SUFFIX = /\b(?:guide|wiki|codes?|tier list|release date|download|apk|price|review|gameplay|trailer|how to|get|fast|today|update|patch notes?)\b/gi
 const GENERIC_PREFIX = /^(?:new|best|official|latest|the|this|that)\s+/i
-const VIRAL_TRIGGER = /\b(?:try|tries|tried|trying|play|plays|played|playing|use|uses|used|using|meet|meets|called|named|launches|launched|launching|introduces|introduced|introducing|what is|who is)\s+([A-Z][A-Za-z0-9.+#'_-]{2,50})\b/g
+const VIRAL_TRIGGER = /\b(?:try|tries|tried|trying|play|plays|played|playing|use|uses|used|using|meet|meets|called|named|launches|launched|launching|introduces|introduced|introducing|built|made)\s+(?:the\s+)?([A-Z][A-Za-z0-9.+#'_-]{2,50})\b/g
+const NEW_ENTITY_TRIGGER = /\bnew\s+([A-Z][A-Za-z0-9.+#'_-]{2,50})\b/g
 
 function classify(name: string, signal: StoredSignal): EntityType {
   const lower = name.toLowerCase()
@@ -28,7 +29,7 @@ function cleanPhrase(value: string): string {
   let cleaned = value
     .replace(INTENT_SUFFIX, " ")
     .replace(/\s+/g, " ")
-    .replace(/^[\s:|\-–—]+|[\s:|\-–—]+$/g, "")
+    .replace(/^[\s:|\-–—'“”\"]+|[\s:|\-–—'“”\"]+$/g, "")
     .trim()
 
   while (GENERIC_PREFIX.test(cleaned)) cleaned = cleaned.replace(GENERIC_PREFIX, "").trim()
@@ -42,12 +43,23 @@ function isTitleCaseHeavy(text: string): boolean {
   return titleCase / words.length >= 0.65
 }
 
+function isNameLikePhrase(value: string): boolean {
+  const words = value.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0 || words.length > 5) return false
+  return words.every((word) =>
+    /^[A-Z][A-Za-z0-9.+#'_-]*$/.test(word)
+    || /^[A-Z]{2,}[0-9.-]*$/.test(word)
+    || /^\d+(?:\.\d+)*$/.test(word)
+    || /^(?:of|for|and|&)$/.test(word)
+  )
+}
+
 function extractDistinctiveTokens(text: string): string[] {
   const words = text.match(/\b[A-Za-z][A-Za-z0-9.+#'_-]*\b/g) ?? []
   return words.filter((word) =>
-    /^[A-Z]{2,10}(?:[0-9.-]+)?$/.test(word) ||
-    /[A-Za-z]+[-_.]?[0-9]+[A-Za-z0-9.-]*/.test(word) ||
-    /^[A-Z][a-z]+[A-Z][A-Za-z0-9]*$/.test(word)
+    /[A-Za-z]+[-_.+]?[0-9]+[A-Za-z0-9.+_-]*/.test(word)
+    || /^[A-Z][a-z]+[A-Z][A-Za-z0-9]*$/.test(word)
+    || /^[A-Za-z]+\.[A-Za-z0-9.-]+$/.test(word)
   )
 }
 
@@ -57,17 +69,59 @@ function extractTitlePhrases(text: string): string[] {
     .filter((phrase) => !STOP.has(phrase))
 }
 
-function extractViralCandidates(text: string): string[] {
-  const quoted = [...text.matchAll(/["“']([^"”']{2,80})["”']/g)].map((match) => match[1])
-  const triggered = [...text.matchAll(VIRAL_TRIGGER)].map((match) => match[1]).filter(Boolean) as string[]
-  const distinctive = extractDistinctiveTokens(text)
+function extractVersionedPhrases(text: string): string[] {
+  return [...text.matchAll(/\b(?:[A-Z][A-Za-z0-9.+#'_-]*)(?:\s+(?:[A-Z][A-Za-z0-9.+#'_-]*)){0,3}\s+(?:v?\d+(?:\.\d+){0,2})\b/g)]
+    .map((match) => match[0])
+    .filter(isNameLikePhrase)
+}
 
-  // Creator/video titles are often Title Case. In that case the old capitalized-phrase regex
-  // turns ordinary prose into fake entities (e.g. "Buy The Fastest SSDs"). Only keep quoted,
-  // trigger-derived, acronym/version/camel-case tokens. Sentence-case titles can still use the
-  // broader named-phrase heuristic.
-  const ordinaryNamedPhrases = isTitleCaseHeavy(text) ? [] : extractTitlePhrases(text)
-  return [...quoted, ...triggered, ...distinctive, ...ordinaryNamedPhrases]
+function extractShowHnName(title: string): string[] {
+  const match = title.match(/^Show\s+HN:\s*(.+)$/i)
+  if (!match?.[1]) return []
+  const remainder = match[1].trim()
+  const first = remainder
+    .split(/\s+[–—-]\s+|\s*\|\s*|:\s+|\s+(?:where|that|which|for|to|with|using)\s+/i)[0]
+    ?.trim()
+  return first && isNameLikePhrase(first) ? [first] : []
+}
+
+function extractLeadingNamedPhrase(title: string): string[] {
+  const match = title.match(/^(.{2,80}?)(?:\s+[–—-]\s+|\s*\|\s*|:\s+)/)
+  const first = match?.[1]?.trim()
+  if (!first || /^show\s+hn$/i.test(first) || !isNameLikePhrase(first)) return []
+  return [first]
+}
+
+function extractShortWholeTitle(title: string): string[] {
+  const value = title.trim()
+  if (!value || value.length > 80) return []
+  const words = value.split(/\s+/)
+  if (words.length > 4 || !isNameLikePhrase(value)) return []
+  return [value]
+}
+
+function extractViralCandidates(signal: StoredSignal): string[] {
+  const title = signal.title?.trim() ?? ""
+  const text = `${title}\n${signal.content ?? ""}`.slice(0, 1200)
+  const direct = typeof signal.metadata.directEntity === "string" && signal.metadata.directEntity.trim()
+    ? [signal.metadata.directEntity.trim()]
+    : []
+  const productHuntTitle = String(signal.metadata.platform ?? "").toLowerCase() === "producthunt" && title
+    ? [title]
+    : []
+  const showHn = title ? extractShowHnName(title) : []
+  const leading = title ? extractLeadingNamedPhrase(title) : []
+  const shortWhole = title ? extractShortWholeTitle(title) : []
+  const triggered = [
+    ...[...text.matchAll(VIRAL_TRIGGER)].map((match) => match[1]).filter(Boolean),
+    ...[...text.matchAll(NEW_ENTITY_TRIGGER)].map((match) => match[1]).filter(Boolean)
+  ] as string[]
+  const versioned = extractVersionedPhrases(title)
+  const distinctive = extractDistinctiveTokens(title)
+
+  // Do not run the broad title-phrase extractor for viral scope. It is intentionally high recall
+  // for game/wiki discovery, but on HN/news/YouTube it turns topic words into fake entities.
+  return [...direct, ...productHuntTitle, ...showHn, ...leading, ...shortWhole, ...triggered, ...versioned, ...distinctive]
 }
 
 export function extractHeuristicEntities(signal: StoredSignal): ExtractedEntity[] {
@@ -75,7 +129,7 @@ export function extractHeuristicEntities(signal: StoredSignal): ExtractedEntity[
   if (!text) return []
 
   const genericCandidates = signal.scope === "viral"
-    ? extractViralCandidates(text)
+    ? extractViralCandidates(signal)
     : [
         ...[...text.matchAll(/["“']([^"”']{2,80})["”']/g)].map((match) => match[1]),
         ...extractTitlePhrases(text)
