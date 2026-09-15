@@ -1,5 +1,6 @@
 import type { Collector, RawSignal } from "@factory/shared"
 import { configBoolean, configNumber, configString, makeSignal, requireConfigString } from "./base.js"
+import { parseFeed } from "./rss.js"
 
 interface RedditChild {
   data?: {
@@ -35,6 +36,102 @@ function seenFullnamesFromCursor(cursor: Record<string, unknown> | undefined): S
   const legacy = cursor?.lastSeenFullname
   if (typeof legacy === "string" && legacy) seen.add(legacy)
   return seen
+}
+
+function redditIdFromFeed(entryId: string, link?: string): { externalId: string; fullname: string } {
+  const fullname = entryId.match(/^t3_[a-z0-9]+$/i)?.[0]
+  if (fullname) return { externalId: fullname.slice(3), fullname }
+
+  const linkId = link?.match(/\/comments\/([a-z0-9]+)(?:\/|$)/i)?.[1]
+  if (linkId) return { externalId: linkId, fullname: `t3_${linkId}` }
+
+  const stable = entryId.replace(/^https?:\/\//i, "").slice(0, 240)
+  return { externalId: stable, fullname: `rss:${stable}` }
+}
+
+function redditAuthorFromFeed(author?: string): string | undefined {
+  if (!author) return undefined
+  return author.replace(/^\/u\//i, "").replace(/^u\//i, "").trim() || undefined
+}
+
+async function collectRssFallback(input: {
+  subreddit: string
+  listing: "new" | "rising" | "hot"
+  limit: number
+  historyLimit: number
+  baselineOnFirstRun: boolean
+  snapshotExisting: boolean
+  platform: string
+  sourceRole: string
+  userAgent: string
+  target: Parameters<Collector["collect"]>[0]
+  cursor: Parameters<Collector["collect"]>[1]
+  context: Parameters<Collector["collect"]>[2]
+}): Promise<Awaited<ReturnType<Collector["collect"]>>> {
+  const {
+    subreddit,
+    listing,
+    limit,
+    historyLimit,
+    baselineOnFirstRun,
+    snapshotExisting,
+    platform,
+    sourceRole,
+    userAgent,
+    target,
+    cursor,
+    context
+  } = input
+
+  const feedUrl = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/${listing}/.rss?limit=${limit}`
+  const response = await context.fetch(feedUrl, {
+    headers: {
+      "User-Agent": userAgent,
+      Accept: "application/atom+xml, application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.5"
+    }
+  })
+  if (!response.ok) throw new Error(`Reddit RSS ${response.status}: r/${subreddit}/${listing}`)
+
+  const entries = parseFeed(await response.text()).slice(0, limit)
+  const seen = seenFullnamesFromCursor(cursor)
+  const isFirstRun = !Array.isArray(cursor?.seenFullnames) && typeof cursor?.lastSeenFullname !== "string"
+  const currentFullnames: string[] = []
+  const signals: RawSignal[] = []
+
+  for (const entry of entries) {
+    const { externalId, fullname } = redditIdFromFeed(entry.id, entry.link)
+    currentFullnames.push(fullname)
+
+    const alreadySeen = seen.has(fullname)
+    if (isFirstRun && baselineOnFirstRun) continue
+    if (alreadySeen && !snapshotExisting) continue
+
+    signals.push(makeSignal("reddit", target, externalId, {
+      title: entry.title,
+      content: entry.content,
+      author: redditAuthorFromFeed(entry.author),
+      url: entry.link,
+      publishedAt: entry.publishedAt,
+      discoveredAt: context.now,
+      metadata: {
+        platform,
+        sourceRole,
+        subreddit,
+        listing,
+        rssFallback: true,
+        feedUrl,
+        snapshotExisting: alreadySeen
+      }
+    }))
+  }
+
+  return {
+    signals,
+    nextCursor: {
+      seenFullnames: [...currentFullnames, ...seen].slice(0, historyLimit),
+      lastSeenFullname: currentFullnames[0] ?? (typeof cursor?.lastSeenFullname === "string" ? cursor.lastSeenFullname : "")
+    }
+  }
 }
 
 export const redditCollector: Collector = {
@@ -76,7 +173,30 @@ export const redditCollector: Collector = {
           }
         }
       )
-      if (!response.ok) throw new Error(`Reddit ${response.status}: r/${subreddit}/${listing}`)
+
+      if (!response.ok) {
+        // Reddit increasingly blocks unauthenticated JSON requests from cloud runners.
+        // Its current www.reddit.com Atom feeds remain public, so preserve discovery
+        // coverage by falling back instead of dropping the entire source.
+        if (!token && (response.status === 403 || response.status === 429)) {
+          return collectRssFallback({
+            subreddit,
+            listing,
+            limit,
+            historyLimit,
+            baselineOnFirstRun,
+            snapshotExisting,
+            platform,
+            sourceRole,
+            userAgent,
+            target,
+            cursor,
+            context
+          })
+        }
+        throw new Error(`Reddit ${response.status}: r/${subreddit}/${listing}`)
+      }
+
       const payload = await response.json() as { data?: { children?: RedditChild[]; after?: string | null } }
       const children = payload.data?.children ?? []
 
