@@ -89,3 +89,43 @@ test("Reddit collector can baseline the first keyless run", async () => {
   assert.equal(result.signals.length, 0)
   assert.equal(result.nextCursor?.lastSeenFullname, "t3_abc123")
 })
+
+test("Reddit collector falls back to the public Atom feed when JSON is blocked", async () => {
+  const requested: string[] = []
+  const atom = `<?xml version="1.0" encoding="UTF-8"?>
+  <feed xmlns="http://www.w3.org/2005/Atom">
+    <entry>
+      <id>t3_xyz789</id>
+      <title>Show HN style project on Reddit: FreshTool</title>
+      <author><name>/u/maker789</name></author>
+      <link rel="alternate" href="https://www.reddit.com/r/SideProject/comments/xyz789/freshtool/" />
+      <published>2026-09-15T03:30:00Z</published>
+      <content type="html"><![CDATA[FreshTool launched today.]]></content>
+    </entry>
+  </feed>`
+
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = String(input)
+    requested.push(url)
+    if (url.includes(".json")) return new Response("blocked", { status: 403 })
+    if (url.includes("/.rss")) {
+      return new Response(atom, { status: 200, headers: { "content-type": "application/atom+xml" } })
+    }
+    return new Response("unexpected", { status: 500 })
+  }
+
+  const result = await redditCollector.collect(target, undefined, {
+    now: new Date("2026-09-15T04:00:00Z"),
+    fetch: fetchImpl
+  })
+
+  assert.equal(requested.length, 2)
+  assert.match(requested[0] ?? "", /\/r\/SideProject\/new\.json/)
+  assert.match(requested[1] ?? "", /\/r\/SideProject\/new\/\.rss/)
+  assert.equal(result.signals.length, 1)
+  assert.equal(result.signals[0]?.externalId, "xyz789")
+  assert.equal(result.signals[0]?.author, "maker789")
+  assert.equal(result.signals[0]?.metadata.platform, "reddit")
+  assert.equal(result.signals[0]?.metadata.rssFallback, true)
+  assert.equal(result.nextCursor?.lastSeenFullname, "t3_xyz789")
+})
