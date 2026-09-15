@@ -26,6 +26,11 @@ type SignalRow = {
   scope: string
 }
 
+type ExpectedMention = {
+  rawSignalId: string
+  entityId: string
+}
+
 function storedSignal(row: SignalRow): StoredSignal {
   return {
     id: String(row.id),
@@ -56,21 +61,14 @@ try {
   )
 
   const signalIds = rows.rows.map((row) => String(row.id))
-  let removedMentions = 0
-  if (signalIds.length > 0) {
-    const removed = await db.query(
-      `DELETE FROM entity_mentions
-       WHERE raw_signal_id = ANY($1::text[])`,
-      [signalIds]
-    )
-    removedMentions = removed.rowCount ?? 0
-  }
-
   const activeEntityIds = new Set<string>()
+  const expectedMentions: ExpectedMention[] = []
   let extractedCount = 0
   let mentionAttempts = 0
   let newCandidates = 0
 
+  // Re-extract first without deleting anything. If this process is interrupted before
+  // reconciliation, production data stays in its previous consistent state.
   for (const row of rows.rows) {
     const signal = storedSignal(row)
     const entities = await extractEntities(signal)
@@ -86,62 +84,84 @@ try {
 
       const result = await discovery.registerEntityMention(signal, entity, normalizedName)
       activeEntityIds.add(result.entityId)
+      expectedMentions.push({ rawSignalId: signal.id, entityId: result.entityId })
       mentionAttempts += 1
       if (result.candidateCreated) newCandidates += 1
     }
   }
 
-  const rebuilt = await db.query(
-    `WITH stats AS (
+  let removedMentions = 0
+  let rebuiltCandidates = 0
+  if (signalIds.length > 0) {
+    const reconciled = await db.query<{ removed_mentions: number; rebuilt_candidates: number }>(
+      `WITH scoped_signals AS (
+         SELECT UNNEST($1::text[]) AS raw_signal_id
+       ),
+       expected AS (
+         SELECT item->>'rawSignalId' AS raw_signal_id,
+                item->>'entityId' AS entity_id
+         FROM jsonb_array_elements($2::jsonb) item
+       ),
+       deleted AS (
+         DELETE FROM entity_mentions em
+         USING scoped_signals ss
+         WHERE em.raw_signal_id = ss.raw_signal_id
+           AND NOT EXISTS (
+             SELECT 1
+             FROM expected ex
+             WHERE ex.raw_signal_id = em.raw_signal_id
+               AND ex.entity_id = em.entity_id
+           )
+         RETURNING em.entity_id
+       ),
+       stats AS (
+         SELECT
+           e.id AS entity_id,
+           COUNT(em.id)::int AS mention_count,
+           COUNT(DISTINCT em.source_type)::int AS source_count,
+           COALESCE(
+             ARRAY_AGG(DISTINCT em.source_type) FILTER (WHERE em.source_type IS NOT NULL),
+             ARRAY[]::text[]
+           ) AS source_types,
+           MIN(rs.discovered_at) AS first_seen_at,
+           MAX(rs.discovered_at) AS last_seen_at
+         FROM entities e
+         LEFT JOIN entity_mentions em ON em.entity_id = e.id
+         LEFT JOIN raw_signals rs ON rs.id = em.raw_signal_id
+         WHERE e.scope = 'viral'
+         GROUP BY e.id
+       ),
+       updated AS (
+         UPDATE candidates c
+         SET mention_count = stats.mention_count,
+             source_count = stats.source_count,
+             source_types = stats.source_types,
+             first_seen_at = COALESCE(stats.first_seen_at, c.first_seen_at),
+             last_seen_at = COALESCE(stats.last_seen_at, c.last_seen_at),
+             status = CASE
+               WHEN c.status NOT IN ('pending_validation', 'filtered_noise') THEN c.status
+               WHEN COALESCE(stats.last_seen_at, c.last_seen_at) < $4::timestamptz THEN c.status
+               WHEN c.entity_id = ANY($3::text[]) THEN
+                 CASE WHEN c.status = 'filtered_noise' THEN 'pending_validation' ELSE c.status END
+               ELSE 'filtered_noise'
+             END,
+             updated_at = NOW()
+         FROM stats
+         WHERE c.entity_id = stats.entity_id
+         RETURNING c.id
+       )
        SELECT
-         e.id AS entity_id,
-         COUNT(em.id)::int AS mention_count,
-         COUNT(DISTINCT em.source_type)::int AS source_count,
-         COALESCE(
-           ARRAY_AGG(DISTINCT em.source_type) FILTER (WHERE em.source_type IS NOT NULL),
-           ARRAY[]::text[]
-         ) AS source_types,
-         MIN(rs.discovered_at) AS first_seen_at,
-         MAX(rs.discovered_at) AS last_seen_at
-       FROM entities e
-       LEFT JOIN entity_mentions em ON em.entity_id = e.id
-       LEFT JOIN raw_signals rs ON rs.id = em.raw_signal_id
-       WHERE e.scope = 'viral'
-       GROUP BY e.id
-     )
-     UPDATE candidates c
-     SET mention_count = stats.mention_count,
-         source_count = stats.source_count,
-         source_types = stats.source_types,
-         first_seen_at = COALESCE(stats.first_seen_at, c.first_seen_at),
-         last_seen_at = COALESCE(stats.last_seen_at, c.last_seen_at),
-         updated_at = NOW()
-     FROM stats
-     WHERE c.entity_id = stats.entity_id`
-  )
-
-  const filterResult = await db.query(
-    `UPDATE candidates c
-     SET status = 'filtered_noise', updated_at = NOW()
-     FROM entities e
-     WHERE e.id = c.entity_id
-       AND e.scope = 'viral'
-       AND c.last_seen_at >= $1
-       AND c.status IN ('pending_validation', 'filtered_noise')`,
-    [cutoff.toISOString()]
-  )
-
-  let reactivated = 0
-  if (activeEntityIds.size > 0) {
-    const activeResult = await db.query(
-      `UPDATE candidates
-       SET status = CASE WHEN status = 'filtered_noise' THEN 'pending_validation' ELSE status END,
-           updated_at = NOW()
-       WHERE entity_id = ANY($1::text[])
-       RETURNING id`,
-      [[...activeEntityIds]]
+         (SELECT COUNT(*)::int FROM deleted) AS removed_mentions,
+         (SELECT COUNT(*)::int FROM updated) AS rebuilt_candidates`,
+      [
+        signalIds,
+        JSON.stringify(expectedMentions),
+        [...activeEntityIds],
+        cutoff.toISOString()
+      ]
     )
-    reactivated = activeResult.rowCount ?? 0
+    removedMentions = Number(reconciled.rows[0]?.removed_mentions ?? 0)
+    rebuiltCandidates = Number(reconciled.rows[0]?.rebuilt_candidates ?? 0)
   }
 
   const summary = await db.query<{ status: string; count: number }>(
@@ -164,10 +184,8 @@ try {
     extractedCount,
     mentionAttempts,
     newCandidates,
-    rebuiltCandidates: rebuilt.rowCount ?? 0,
-    initiallyFiltered: filterResult.rowCount ?? 0,
+    rebuiltCandidates,
     activeEntityCount: activeEntityIds.size,
-    reactivated,
     statuses: summary.rows
   }, null, 2))
 } finally {
