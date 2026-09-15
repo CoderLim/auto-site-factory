@@ -24,6 +24,12 @@ export type DiscoveryCandidate = {
   platforms: string[]
   targetCount: number
   authorCount: number
+  metricSampleCount: number
+  scoreDelta24h: number
+  commentDelta24h: number
+  viewDelta24h: number
+  shareDelta24h: number
+  engagementDelta24h: number
   corroboration: "single_source" | "launch_only" | "organic"
   stage: "DISCOVERED" | "ACCELERATING" | "CROSS_PLATFORM" | "MEDIA_PICKUP" | "BREAKOUT"
   viralScore: number
