@@ -13,7 +13,10 @@
       "historyLimit": 1000,
       "baselineOnFirstRun": false,
       "directEntity": true,
-      "entityType": "GAME"
+      "entityType": "GAME",
+      "directEntityStripBracketSuffix": true,
+      "titleIncludes": ["[Visual Novel]"],
+      "maxAgeHours": 72
     }
   }
 ]

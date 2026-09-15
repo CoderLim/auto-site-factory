@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 import type { SourceTarget } from "@factory/shared"
-import { parseFeed, rssCollector } from "./rss.js"
+import { parseFeed, rssCollector, stripTrailingBracketMetadata } from "./rss.js"
 
 const target: SourceTarget = {
   id: "rss-test",
@@ -36,6 +36,28 @@ const atom = `<?xml version="1.0"?>
     <author><name>xQc</name></author>
   </entry>
 </feed>`
+
+const itchRss = `<?xml version="1.0"?>
+<rss><channel>
+  <item>
+    <title><![CDATA[Merrilend [Free] [Visual Novel]]]></title>
+    <link>https://alexchichi.itch.io/merrilend</link>
+    <guid>itch-1</guid>
+    <pubDate>Mon, 14 Sep 2026 14:44:19 GMT</pubDate>
+  </item>
+  <item>
+    <title><![CDATA[ECHO DIMENSION [$4.99] [Rhythm]]]></title>
+    <link>https://ligen19910313.itch.io/echo-dimension</link>
+    <guid>itch-2</guid>
+    <pubDate>Mon, 14 Sep 2026 15:41:02 GMT</pubDate>
+  </item>
+  <item>
+    <title><![CDATA[Bounty or Booty [Free] [Visual Novel] [Windows] [Linux]]]></title>
+    <link>https://doksa.itch.io/bounty-or-booty</link>
+    <guid>itch-3</guid>
+    <pubDate>Sun, 30 Mar 2025 20:48:55 GMT</pubDate>
+  </item>
+</channel></rss>`
 
 test("parseFeed supports RSS and Atom", () => {
   assert.equal(parseFeed(rss)[0]?.title, "Trying Omoggle for the first time")
@@ -73,4 +95,33 @@ test("RSS collector can mark feed titles as trusted direct entities", async () =
   assert.equal(result.signals[0]?.metadata.platform, "itch")
   assert.equal(result.signals[0]?.metadata.directEntity, "Trying Omoggle for the first time")
   assert.equal(result.signals[0]?.metadata.entityType, "GAME")
+})
+
+test("stripTrailingBracketMetadata removes itch listing metadata", () => {
+  assert.equal(stripTrailingBracketMetadata("Merrilend [Free] [Visual Novel]"), "Merrilend")
+  assert.equal(stripTrailingBracketMetadata("Platform Edge [Free] [Visual Novel] [Windows] [macOS]"), "Platform Edge")
+})
+
+test("RSS collector filters itch entries by category and freshness and cleans entity name", async () => {
+  const itchTarget: SourceTarget = {
+    ...target,
+    id: "rss-itch-test",
+    config: {
+      ...target.config,
+      platform: "itch",
+      directEntity: true,
+      entityType: "GAME",
+      directEntityStripBracketSuffix: true,
+      titleIncludes: ["[Visual Novel]"],
+      maxAgeHours: 72
+    }
+  }
+  const result = await rssCollector.collect(itchTarget, { seenIds: [] }, {
+    now: new Date("2026-09-15T02:00:00Z"),
+    fetch: async () => new Response(itchRss, { status: 200 })
+  })
+
+  assert.equal(result.signals.length, 1)
+  assert.equal(result.signals[0]?.title, "Merrilend [Free] [Visual Novel]")
+  assert.equal(result.signals[0]?.metadata.directEntity, "Merrilend")
 })
