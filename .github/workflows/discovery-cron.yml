@@ -2,10 +2,18 @@ name: Discovery Cron
 
 on:
   workflow_dispatch:
+  # Self-test the workflow whenever its schedule/config is changed on main.
+  # This also gives us an immediate recovery run instead of waiting for cron.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/discovery-cron.yml"
   schedule:
-    # GitHub cron is UTC. This runs five times per day at 00:17, 05:17,
-    # 10:17, 15:17 and 20:17 UTC (roughly every five hours).
-    - cron: "17 0,5,10,15,20 * * *"
+    # GitHub scheduled workflows can occasionally be delayed. Run every four
+    # hours at :23 so a delayed/skipped event is less likely to leave sources
+    # stale for the 12-hour anomaly window.
+    - cron: "23 */4 * * *"
 
 concurrency:
   group: discovery-cron
