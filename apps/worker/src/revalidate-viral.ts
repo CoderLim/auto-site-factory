@@ -55,6 +55,17 @@ try {
     [cutoff.toISOString()]
   )
 
+  const signalIds = rows.rows.map((row) => String(row.id))
+  let removedMentions = 0
+  if (signalIds.length > 0) {
+    const removed = await db.query(
+      `DELETE FROM entity_mentions
+       WHERE raw_signal_id = ANY($1::text[])`,
+      [signalIds]
+    )
+    removedMentions = removed.rowCount ?? 0
+  }
+
   const activeEntityIds = new Set<string>()
   let extractedCount = 0
   let mentionAttempts = 0
@@ -79,6 +90,35 @@ try {
       if (result.candidateCreated) newCandidates += 1
     }
   }
+
+  const rebuilt = await db.query(
+    `WITH stats AS (
+       SELECT
+         e.id AS entity_id,
+         COUNT(em.id)::int AS mention_count,
+         COUNT(DISTINCT em.source_type)::int AS source_count,
+         COALESCE(
+           ARRAY_AGG(DISTINCT em.source_type) FILTER (WHERE em.source_type IS NOT NULL),
+           ARRAY[]::text[]
+         ) AS source_types,
+         MIN(rs.discovered_at) AS first_seen_at,
+         MAX(rs.discovered_at) AS last_seen_at
+       FROM entities e
+       LEFT JOIN entity_mentions em ON em.entity_id = e.id
+       LEFT JOIN raw_signals rs ON rs.id = em.raw_signal_id
+       WHERE e.scope = 'viral'
+       GROUP BY e.id
+     )
+     UPDATE candidates c
+     SET mention_count = stats.mention_count,
+         source_count = stats.source_count,
+         source_types = stats.source_types,
+         first_seen_at = COALESCE(stats.first_seen_at, c.first_seen_at),
+         last_seen_at = COALESCE(stats.last_seen_at, c.last_seen_at),
+         updated_at = NOW()
+     FROM stats
+     WHERE c.entity_id = stats.entity_id`
+  )
 
   const filterResult = await db.query(
     `UPDATE candidates c
@@ -120,9 +160,11 @@ try {
     hours,
     cutoff: cutoff.toISOString(),
     signalsScanned: rows.rowCount ?? rows.rows.length,
+    removedMentions,
     extractedCount,
     mentionAttempts,
     newCandidates,
+    rebuiltCandidates: rebuilt.rowCount ?? 0,
     initiallyFiltered: filterResult.rowCount ?? 0,
     activeEntityCount: activeEntityIds.size,
     reactivated,

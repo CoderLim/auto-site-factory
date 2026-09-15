@@ -68,7 +68,10 @@ const server = createServer(async (request, response) => {
         discovery.listCandidates(sinceForRange(range), { sourceType }),
         discovery.countEnabledTargets()
       ])
-      return sendJson(response, 200, { candidates, enabledTargetCount })
+      return sendJson(response, 200, {
+        candidates: candidates.filter((candidate) => candidate.status !== "filtered_noise"),
+        enabledTargetCount
+      })
     }
 
     if (request.method === "GET" && url.pathname === "/api/discovery/keywords") {
