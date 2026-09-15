@@ -73,6 +73,11 @@ async function generateMissingKeywords(repository: KeywordRepository): Promise<{
   const removedInvalid = await repository.deleteInvalidOperationalScopeKeywords(["viral"])
   if (removedInvalid > 0) console.log(`[keywords] removed ${removedInvalid} invalid operational-scope candidates`)
 
+  const removedIneligible = await repository.deleteIneligibleKeywords()
+  if (removedIneligible > 0) {
+    console.log(`[keywords] removed ${removedIneligible} candidates sourced only from tracking/wiki edits`)
+  }
+
   while (true) {
     const seeds = await repository.listMissingSeeds(1000)
     if (seeds.length === 0) break
