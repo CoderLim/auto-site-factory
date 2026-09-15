@@ -1,0 +1,19 @@
+[
+  {
+    "id": "rss-itch-visual-novel",
+    "sourceType": "rss",
+    "name": "itch.io New Visual Novels",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "platform": "itch",
+      "feedUrl": "https://itch.io/games/newest/genre-visual-novel.xml",
+      "maxItems": 100,
+      "historyLimit": 1000,
+      "baselineOnFirstRun": false,
+      "directEntity": true,
+      "entityType": "GAME"
+    }
+  }
+]

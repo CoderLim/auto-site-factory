@@ -53,3 +53,24 @@ test("RSS collector emits unseen entries", async () => {
   assert.equal(result.signals[0]?.title, "Trying Omoggle for the first time")
   assert.equal(result.signals[0]?.sourceType, "rss")
 })
+
+test("RSS collector can mark feed titles as trusted direct entities", async () => {
+  const directTarget: SourceTarget = {
+    ...target,
+    id: "rss-itch-test",
+    config: {
+      ...target.config,
+      platform: "itch",
+      directEntity: true,
+      entityType: "GAME"
+    }
+  }
+  const result = await rssCollector.collect(directTarget, { seenIds: [] }, {
+    now: new Date("2026-09-04T04:00:00Z"),
+    fetch: async () => new Response(rss, { status: 200 })
+  })
+
+  assert.equal(result.signals[0]?.metadata.platform, "itch")
+  assert.equal(result.signals[0]?.metadata.directEntity, "Trying Omoggle for the first time")
+  assert.equal(result.signals[0]?.metadata.entityType, "GAME")
+})

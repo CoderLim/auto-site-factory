@@ -88,6 +88,8 @@ export const rssCollector: Collector = {
     const baselineOnFirstRun = configBoolean(target.config, "baselineOnFirstRun", true)
     const platform = configString(target.config, "platform", "rss")
     const sourceRole = configString(target.config, "sourceRole", "discovery")
+    const directEntity = configBoolean(target.config, "directEntity", false)
+    const entityType = configString(target.config, "entityType", "OTHER")
 
     const response = await context.fetch(feedUrl, {
       headers: {
@@ -118,7 +120,12 @@ export const rssCollector: Collector = {
         url: entry.link,
         publishedAt: entry.publishedAt,
         discoveredAt: context.now,
-        metadata: { feedUrl, platform, sourceRole }
+        metadata: {
+          feedUrl,
+          platform,
+          sourceRole,
+          ...(directEntity ? { directEntity: entry.title, entityType } : {})
+        }
       }))
 
     return {
