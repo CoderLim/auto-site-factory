@@ -37,6 +37,15 @@ const atom = `<?xml version="1.0"?>
   </entry>
 </feed>`
 
+const encodedRss = `<?xml version="1.0"?>
+<rss><channel>
+  <item>
+    <title>Don&#039;t Befriend The Class Nerd! [Free] [Visual Novel]</title>
+    <link>https://example.itch.io/dont-befriend</link>
+    <guid>encoded-1</guid>
+  </item>
+</channel></rss>`
+
 const itchRss = `<?xml version="1.0"?>
 <rss><channel>
   <item>
@@ -63,6 +72,10 @@ test("parseFeed supports RSS and Atom", () => {
   assert.equal(parseFeed(rss)[0]?.title, "Trying Omoggle for the first time")
   assert.equal(parseFeed(atom)[0]?.author, "xQc")
   assert.equal(parseFeed(atom)[0]?.link, "https://youtube.com/watch?v=abc")
+})
+
+test("parseFeed decodes zero-padded numeric apostrophe entities", () => {
+  assert.equal(parseFeed(encodedRss)[0]?.title, "Don't Befriend The Class Nerd! [Free] [Visual Novel]")
 })
 
 test("RSS collector emits unseen entries", async () => {
