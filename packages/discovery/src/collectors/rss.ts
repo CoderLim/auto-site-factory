@@ -1,5 +1,5 @@
 import type { Collector } from "@factory/shared"
-import { configBoolean, configNumber, configString, makeSignal, requireConfigString } from "./base.js"
+import { configBoolean, configNumber, configString, configStringArray, makeSignal, requireConfigString } from "./base.js"
 
 type FeedEntry = {
   id: string
@@ -79,6 +79,23 @@ function cursorSeenIds(cursor: Record<string, unknown> | undefined): string[] {
   return value.filter((item): item is string => typeof item === "string")
 }
 
+function stripTrailingBracketMetadata(title: string): string {
+  return title.replace(/(?:\s+\[[^\]]+\])+\s*$/g, "").trim()
+}
+
+function matchesTitleIncludes(title: string, includes: string[]): boolean {
+  if (includes.length === 0) return true
+  const normalized = title.toLowerCase()
+  return includes.some((value) => normalized.includes(value.toLowerCase()))
+}
+
+function isFreshEnough(entry: FeedEntry, now: Date, maxAgeHours: number): boolean {
+  if (maxAgeHours <= 0) return true
+  if (!entry.publishedAt) return false
+  const ageHours = (now.getTime() - entry.publishedAt.getTime()) / (60 * 60 * 1000)
+  return ageHours >= -1 && ageHours <= maxAgeHours
+}
+
 export const rssCollector: Collector = {
   type: "rss",
   async collect(target, cursor, context) {
@@ -90,6 +107,9 @@ export const rssCollector: Collector = {
     const sourceRole = configString(target.config, "sourceRole", "discovery")
     const directEntity = configBoolean(target.config, "directEntity", false)
     const entityType = configString(target.config, "entityType", "OTHER")
+    const directEntityStripBracketSuffix = configBoolean(target.config, "directEntityStripBracketSuffix", false)
+    const titleIncludes = configStringArray(target.config, "titleIncludes")
+    const maxAgeHours = Math.max(0, configNumber(target.config, "maxAgeHours", 0))
 
     const response = await context.fetch(feedUrl, {
       headers: {
@@ -99,7 +119,10 @@ export const rssCollector: Collector = {
     })
     if (!response.ok) throw new Error(`RSS ${response.status}: ${feedUrl}`)
     const xml = await response.text()
-    const entries = parseFeed(xml).slice(0, maxItems)
+    const entries = parseFeed(xml)
+      .filter((entry) => matchesTitleIncludes(entry.title, titleIncludes))
+      .filter((entry) => isFreshEnough(entry, context.now, maxAgeHours))
+      .slice(0, maxItems)
     const previousSeenIds = cursorSeenIds(cursor)
     const seen = new Set(previousSeenIds)
     const isFirstRun = !Array.isArray(cursor?.seenIds)
@@ -113,20 +136,25 @@ export const rssCollector: Collector = {
 
     const signals = entries
       .filter((entry) => !seen.has(entry.id))
-      .map((entry) => makeSignal("rss", target, entry.id, {
-        title: entry.title,
-        content: entry.content,
-        author: entry.author,
-        url: entry.link,
-        publishedAt: entry.publishedAt,
-        discoveredAt: context.now,
-        metadata: {
-          feedUrl,
-          platform,
-          sourceRole,
-          ...(directEntity ? { directEntity: entry.title, entityType } : {})
-        }
-      }))
+      .map((entry) => {
+        const directName = directEntityStripBracketSuffix
+          ? stripTrailingBracketMetadata(entry.title)
+          : entry.title
+        return makeSignal("rss", target, entry.id, {
+          title: entry.title,
+          content: entry.content,
+          author: entry.author,
+          url: entry.link,
+          publishedAt: entry.publishedAt,
+          discoveredAt: context.now,
+          metadata: {
+            feedUrl,
+            platform,
+            sourceRole,
+            ...(directEntity ? { directEntity: directName, entityType } : {})
+          }
+        })
+      })
 
     return {
       signals,
@@ -137,4 +165,4 @@ export const rssCollector: Collector = {
   }
 }
 
-export { parseFeed }
+export { parseFeed, stripTrailingBracketMetadata }
