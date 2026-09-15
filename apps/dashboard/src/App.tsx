@@ -130,6 +130,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(() => tabForPath())
   const [range, setRange] = useState("1d")
   const [sourceType, setSourceType] = useState("")
+  const [viralPlatform, setViralPlatform] = useState("")
   const [keywordStatus, setKeywordStatus] = useState("pending_validation")
   const [targets, setTargets] = useState<SitemapTarget[]>([])
   const [candidates, setCandidates] = useState<DiscoveryCandidate[]>([])
@@ -239,9 +240,19 @@ export default function App() {
     return seen.size
   }, [candidates])
 
+  const viralPlatforms = useMemo(() => {
+    const seen = new Set<string>()
+    for (const candidate of candidates) {
+      if (candidate.scope !== "viral") continue
+      for (const platform of candidate.platforms) seen.add(platform)
+    }
+    return [...seen].sort()
+  }, [candidates])
+
   const viralCandidates = useMemo(() => candidates
     .filter((candidate) => candidate.scope === "viral")
-    .sort((a, b) => b.viralScore - a.viralScore), [candidates])
+    .filter((candidate) => !viralPlatform || candidate.platforms.includes(viralPlatform))
+    .sort((a, b) => b.viralScore - a.viralScore), [candidates, viralPlatform])
 
   const viralStats = useMemo(() => ({
     actionable: viralCandidates.filter((candidate) => candidate.stage !== "DISCOVERED").length,
@@ -439,10 +450,16 @@ export default function App() {
             <div className="alert info">只看 scope=viral 的实体。优先关注 ACCELERATING、CROSS PLATFORM、MEDIA PICKUP 和 BREAKOUT；“官方发布”会降权，“自然扩散”才算真正跨平台验证。</div>
             <div className="toolbar">
               <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
-              <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-                <option value="">全部来源</option>
-                {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
-              </select>
+              <div className="filter-row">
+                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                  <option value="">全部来源</option>
+                  {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                </select>
+                <select value={viralPlatform} onChange={(event) => setViralPlatform(event.target.value)}>
+                  <option value="">全部平台</option>
+                  {viralPlatforms.map((platform) => <option value={platform} key={platform}>{platform === "itch" ? "itch.io" : platform}</option>)}
+                </select>
+              </div>
             </div>
             <div className="stats">
               <article><strong>{viralCandidates.length}</strong><span>Viral 实体</span></article>
@@ -452,7 +469,7 @@ export default function App() {
             </div>
             <div className="card table-card">
               <table>
-                <thead><tr><th>实体</th><th>Viral Score</th><th>阶段</th><th>传播判断</th><th>平台</th><th>作者</th><th>提及</th><th>首次发现</th></tr></thead>
+                <thead><tr><th>实体</th><th>Viral Score</th><th>阶段</th><th>传播判断</th><th>平台</th><th>Score / Ratings Δ24h</th><th>Comments Δ24h</th><th>采样</th><th>作者</th><th>提及</th><th>首次发现</th></tr></thead>
                 <tbody>
                   {viralCandidates.map((candidate) => (
                     <tr key={candidate.id}>
@@ -461,6 +478,9 @@ export default function App() {
                       <td><span className={`status ${candidate.stage === "BREAKOUT" || candidate.stage === "MEDIA_PICKUP" ? "success" : candidate.stage === "DISCOVERED" ? "" : "running"}`}>{viralStageLabel(candidate.stage)}</span></td>
                       <td>{corroborationLabel(candidate.corroboration)}</td>
                       <td>{candidate.platforms.join(" → ") || "—"}</td>
+                      <td className={candidate.scoreDelta24h > 0 ? "positive" : ""}>{formatDelta(candidate.scoreDelta24h)}</td>
+                      <td className={candidate.commentDelta24h > 0 ? "positive" : ""}>{formatDelta(candidate.commentDelta24h)}</td>
+                      <td>{candidate.metricSampleCount}</td>
                       <td>{candidate.authorCount}</td>
                       <td>{candidate.mentionCount}</td>
                       <td>{formatTime(candidate.firstSeenAt)}</td>
