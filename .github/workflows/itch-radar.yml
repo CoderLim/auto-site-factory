@@ -24,7 +24,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SOURCE_TARGETS_FILE: config/itch-source-targets.json
-      ITCH_REVALIDATE_HOURS: 168
+      ITCH_REVALIDATE_HOURS: 72
       ITCH_REVALIDATE_LIMIT: 100
       ITCH_REVALIDATE_CONCURRENCY: 4
 
