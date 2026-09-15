@@ -1,0 +1,61 @@
+name: Itch Radar
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/itch-radar.yml"
+      - "apps/worker/src/revalidate-itch.ts"
+      - "packages/discovery/src/itch-metrics.ts"
+      - "packages/discovery/src/collectors/rss.ts"
+      - "config/itch-source-targets.json"
+  schedule:
+    - cron: "17 * * * *"
+
+concurrency:
+  group: itch-radar
+  cancel-in-progress: false
+
+jobs:
+  discover-and-sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SOURCE_TARGETS_FILE: config/itch-source-targets.json
+      ITCH_REVALIDATE_HOURS: 168
+      ITCH_REVALIDATE_LIMIT: 100
+      ITCH_REVALIDATE_CONCURRENCY: 4
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require database
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+
+      - run: npm install
+      - run: npm run build -w @factory/shared
+      - run: npm run build -w @factory/database
+      - run: npm run build -w @factory/discovery
+      - run: npm run build -w @factory/worker
+
+      - name: Migrate database
+        run: node packages/database/dist/migrate.js
+
+      - name: Sync itch source targets
+        run: node apps/worker/dist/sync-targets.js
+
+      - name: Collect latest itch games
+        run: node apps/worker/dist/index.js --once --source=rss --scope=viral
+
+      - name: Snapshot recent itch engagement
+        run: node apps/worker/dist/revalidate-itch.js
