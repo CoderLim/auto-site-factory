@@ -48,9 +48,6 @@ jobs:
       - run: npm run build -w @factory/discovery
       - run: npm run build -w @factory/worker
 
-      - name: Migrate database
-        run: node packages/database/dist/migrate.js
-
       - name: Sync itch source targets
         run: node apps/worker/dist/sync-targets.js
 
