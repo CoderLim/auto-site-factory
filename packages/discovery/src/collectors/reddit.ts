@@ -1,5 +1,6 @@
 import type { Collector, RawSignal } from "@factory/shared"
 import { configBoolean, configNumber, configString, makeSignal, requireConfigString } from "./base.js"
+import { parseFeed } from "./rss.js"
 
 interface RedditChild {
   data?: {
@@ -22,6 +23,9 @@ interface RedditChild {
   }
 }
 
+let keylessFetchChain: Promise<void> = Promise.resolve()
+let nextKeylessFetchAt = 0
+
 function validListing(value: string): "new" | "rising" | "hot" {
   return value === "rising" || value === "hot" ? value : "new"
 }
@@ -37,6 +41,170 @@ function seenFullnamesFromCursor(cursor: Record<string, unknown> | undefined): S
   return seen
 }
 
+function redditIdFromFeed(entryId: string, link?: string): { externalId: string; fullname: string } {
+  const fullname = entryId.match(/^t3_[a-z0-9]+$/i)?.[0]
+  if (fullname) return { externalId: fullname.slice(3), fullname }
+
+  const linkId = link?.match(/\/comments\/([a-z0-9]+)(?:\/|$)/i)?.[1]
+  if (linkId) return { externalId: linkId, fullname: `t3_${linkId}` }
+
+  const stable = entryId.replace(/^https?:\/\//i, "").slice(0, 240)
+  return { externalId: stable, fullname: `rss:${stable}` }
+}
+
+function redditAuthorFromFeed(author?: string): string | undefined {
+  if (!author) return undefined
+  return author.replace(/^\/u\//i, "").replace(/^u\//i, "").trim() || undefined
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function pacedKeylessFetch(
+  context: Parameters<Collector["collect"]>[2],
+  url: string,
+  init: RequestInit,
+  intervalMs: number
+): Promise<Response> {
+  let release!: () => void
+  const previous = keylessFetchChain
+  keylessFetchChain = new Promise<void>((resolve) => { release = resolve })
+  await previous
+
+  try {
+    const waitMs = Math.max(0, nextKeylessFetchAt - Date.now())
+    if (waitMs > 0) await sleep(waitMs)
+    const response = await context.fetch(url, init)
+    nextKeylessFetchAt = Date.now() + intervalMs
+    return response
+  } finally {
+    release()
+  }
+}
+
+function retryDelayMs(response: Response): number {
+  const retryAfter = response.headers.get("retry-after")
+  if (retryAfter) {
+    const seconds = Number(retryAfter)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(60_000, seconds * 1000)
+  }
+  const reset = response.headers.get("x-ratelimit-reset")
+  if (reset) {
+    const seconds = Number(reset)
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.min(60_000, seconds * 1000)
+  }
+  return 2_000
+}
+
+async function fetchRedditFeed(
+  context: Parameters<Collector["collect"]>[2],
+  urls: string[],
+  userAgent: string,
+  intervalMs: number
+): Promise<{ response: Response; feedUrl: string }> {
+  let lastStatus = 0
+
+  for (const feedUrl of urls) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await pacedKeylessFetch(context, feedUrl, {
+        headers: {
+          "User-Agent": userAgent,
+          Accept: "application/atom+xml, application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.5",
+          "Accept-Language": "en-US,en;q=0.9"
+        }
+      }, intervalMs)
+
+      if (response.ok) return { response, feedUrl }
+      lastStatus = response.status
+      if (response.status !== 429) break
+      if (attempt === 0) await sleep(retryDelayMs(response))
+    }
+  }
+
+  throw new Error(`Reddit RSS ${lastStatus || "failed"}`)
+}
+
+async function collectRssKeyless(input: {
+  subreddit: string
+  listing: "new" | "rising" | "hot"
+  limit: number
+  historyLimit: number
+  baselineOnFirstRun: boolean
+  snapshotExisting: boolean
+  platform: string
+  sourceRole: string
+  userAgent: string
+  intervalMs: number
+  target: Parameters<Collector["collect"]>[0]
+  cursor: Parameters<Collector["collect"]>[1]
+  context: Parameters<Collector["collect"]>[2]
+}): Promise<Awaited<ReturnType<Collector["collect"]>>> {
+  const {
+    subreddit,
+    listing,
+    limit,
+    historyLimit,
+    baselineOnFirstRun,
+    snapshotExisting,
+    platform,
+    sourceRole,
+    userAgent,
+    intervalMs,
+    target,
+    cursor,
+    context
+  } = input
+
+  const encodedSubreddit = encodeURIComponent(subreddit)
+  const suffix = `/r/${encodedSubreddit}/${listing}/.rss?limit=${limit}&sort=${listing}`
+  const { response, feedUrl } = await fetchRedditFeed(context, [
+    `https://www.reddit.com${suffix}`,
+    `https://old.reddit.com${suffix}`
+  ], userAgent, intervalMs)
+
+  const entries = parseFeed(await response.text()).slice(0, limit)
+  const seen = seenFullnamesFromCursor(cursor)
+  const isFirstRun = !Array.isArray(cursor?.seenFullnames) && typeof cursor?.lastSeenFullname !== "string"
+  const currentFullnames: string[] = []
+  const signals: RawSignal[] = []
+
+  for (const entry of entries) {
+    const { externalId, fullname } = redditIdFromFeed(entry.id, entry.link)
+    currentFullnames.push(fullname)
+
+    const alreadySeen = seen.has(fullname)
+    if (isFirstRun && baselineOnFirstRun) continue
+    if (alreadySeen && !snapshotExisting) continue
+
+    signals.push(makeSignal("reddit", target, externalId, {
+      title: entry.title,
+      content: entry.content,
+      author: redditAuthorFromFeed(entry.author),
+      url: entry.link,
+      publishedAt: entry.publishedAt,
+      discoveredAt: context.now,
+      metadata: {
+        platform,
+        sourceRole,
+        subreddit,
+        listing,
+        transport: "rss",
+        feedUrl,
+        snapshotExisting: alreadySeen
+      }
+    }))
+  }
+
+  return {
+    signals,
+    nextCursor: {
+      seenFullnames: [...currentFullnames, ...seen].slice(0, historyLimit),
+      lastSeenFullname: currentFullnames[0] ?? (typeof cursor?.lastSeenFullname === "string" ? cursor.lastSeenFullname : "")
+    }
+  }
+}
+
 export const redditCollector: Collector = {
   type: "reddit",
   async collect(target, cursor, context) {
@@ -46,7 +214,7 @@ export const redditCollector: Collector = {
     const userAgentEnv = configString(target.config, "userAgentEnv")
     const configuredUserAgent = userAgentEnv ? process.env[userAgentEnv]?.trim() : undefined
     const userAgent = configuredUserAgent
-      || configString(target.config, "userAgent", "auto-site-factory/0.1 (+https://github.com/CoderLim/auto-site-factory)")
+      || configString(target.config, "userAgent", "Mozilla/5.0 (compatible; AutoSiteFactory/0.1; +https://github.com/CoderLim/auto-site-factory)")
     const listing = validListing(configString(target.config, "listing", "new"))
     const limit = Math.min(100, Math.max(1, configNumber(target.config, "limit", 100)))
     const maxPages = Math.min(10, Math.max(1, configNumber(target.config, "maxPages", 3)))
@@ -55,9 +223,31 @@ export const redditCollector: Collector = {
     const snapshotExisting = configBoolean(target.config, "snapshotExisting", false)
     const platform = configString(target.config, "platform", "reddit")
     const sourceRole = configString(target.config, "sourceRole", "discovery")
+    const keylessIntervalMs = Math.min(10_000, Math.max(0, configNumber(target.config, "keylessIntervalMs", 1100)))
+
+    // Reddit disabled unauthenticated JSON listing feeds in 2026. Keep OAuth JSON for
+    // installations that have a token, but use Reddit's public RSS/Atom feeds for the
+    // zero-key Viral Radar path.
+    if (!token) {
+      return collectRssKeyless({
+        subreddit,
+        listing,
+        limit,
+        historyLimit,
+        baselineOnFirstRun,
+        snapshotExisting,
+        platform,
+        sourceRole,
+        userAgent,
+        intervalMs: keylessIntervalMs,
+        target,
+        cursor,
+        context
+      })
+    }
+
     const seen = seenFullnamesFromCursor(cursor)
     const isFirstRun = !Array.isArray(cursor?.seenFullnames) && typeof cursor?.lastSeenFullname !== "string"
-
     const signals: RawSignal[] = []
     const currentFullnames: string[] = []
     let after: string | undefined
@@ -65,18 +255,17 @@ export const redditCollector: Collector = {
     for (let page = 0; page < maxPages; page += 1) {
       const params = new URLSearchParams({ limit: String(limit), raw_json: "1" })
       if (after) params.set("after", after)
-      const baseUrl = token ? "https://oauth.reddit.com" : "https://www.reddit.com"
       const response = await context.fetch(
-        `${baseUrl}/r/${encodeURIComponent(subreddit)}/${listing}${token ? "" : ".json"}?${params}`,
+        `https://oauth.reddit.com/r/${encodeURIComponent(subreddit)}/${listing}?${params}`,
         {
           headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            Authorization: `Bearer ${token}`,
             "User-Agent": userAgent,
             Accept: "application/json"
           }
         }
       )
-      if (!response.ok) throw new Error(`Reddit ${response.status}: r/${subreddit}/${listing}`)
+      if (!response.ok) throw new Error(`Reddit OAuth ${response.status}: r/${subreddit}/${listing}`)
       const payload = await response.json() as { data?: { children?: RedditChild[]; after?: string | null } }
       const children = payload.data?.children ?? []
 
@@ -103,6 +292,7 @@ export const redditCollector: Collector = {
             sourceRole,
             subreddit,
             listing,
+            transport: "oauth-json",
             score: post.score ?? 0,
             ups: post.ups ?? 0,
             numComments: post.num_comments ?? 0,
