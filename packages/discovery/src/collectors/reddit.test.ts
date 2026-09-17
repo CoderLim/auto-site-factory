@@ -63,7 +63,7 @@ test("Reddit collector falls back to Arctic Shift when Reddit RSS is blocked", a
   const fetchImpl: typeof fetch = async (input) => {
     const url = String(input)
     requestedUrls.push(url)
-    if (url.includes("reddit.com/")) return new Response("Forbidden", { status: 403 })
+    if (/^https:\/\/(?:www|old)\.reddit\.com\//.test(url)) return new Response("Forbidden", { status: 403 })
     return new Response(JSON.stringify({
       data: [{
         id: "abc999",
@@ -85,7 +85,7 @@ test("Reddit collector falls back to Arctic Shift when Reddit RSS is blocked", a
     fetch: fetchImpl
   })
 
-  assert.equal(requestedUrls.filter((url) => url.includes("reddit.com/")).length, 2)
+  assert.equal(requestedUrls.filter((url) => /^https:\/\/(?:www|old)\.reddit\.com\//.test(url)).length, 2)
   assert.match(requestedUrls.at(-1) ?? "", /^https:\/\/arctic-shift\.photon-reddit\.com\/api\/posts\/search\?/)
   assert.equal(result.signals.length, 1)
   assert.equal(result.signals[0]?.externalId, "abc999")
