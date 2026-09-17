@@ -140,6 +140,7 @@
       "entityType": "GAME",
       "baselineOnFirstRun": true,
       "fetchPageMetadata": true,
+      "trustUrlSlugAsEntity": true,
       "maxSitemaps": 20,
       "maxUrls": 100000,
       "maxNewUrls": 50
