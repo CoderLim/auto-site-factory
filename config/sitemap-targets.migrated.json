@@ -155,6 +155,9 @@
     "config": {
       "sourceRole": "discovery",
       "sitemapUrl": "https://itch.io/sitemap.xml",
+      "urlExcludes": [
+        "/devlog/"
+      ],
       "entityType": "GAME",
       "baselineOnFirstRun": true,
       "fetchPageMetadata": true,
