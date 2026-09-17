@@ -28,7 +28,7 @@
       "listing": "rising",
       "limit": 100,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
@@ -45,7 +45,7 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
@@ -62,7 +62,7 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
@@ -79,7 +79,7 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
@@ -96,7 +96,7 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
@@ -113,7 +113,7 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
@@ -130,7 +130,7 @@
       "listing": "new",
       "limit": 50,
       "maxPages": 2,
-      "baselineOnFirstRun": true,
+      "baselineOnFirstRun": false,
       "snapshotExisting": true
     }
   },
