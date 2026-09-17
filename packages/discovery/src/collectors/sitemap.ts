@@ -35,12 +35,61 @@ function htmlText(value: string): string {
     .trim()
 }
 
+type PageMetadata = { pageTitle?: string; h1?: string }
+type EntityNameSource = "h1" | "title" | "h1_title" | "trusted_url_slug"
+
+function normalizeEntityEvidence(value: string): string {
+  return htmlText(value)
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function titleLead(value: string): string {
+  const cleaned = htmlText(value)
+  const first = cleaned.split(/\s+(?:[|·•]|[-–—])\s+/)[0]?.trim()
+  return first || cleaned
+}
+
+export function resolveSitemapEntityName(
+  keyword: string | undefined,
+  metadata: PageMetadata,
+  trustUrlSlugAsEntity = false
+): { name?: string; source?: EntityNameSource } {
+  const candidate = keyword?.trim()
+  if (!candidate) return {}
+
+  const candidateNormalized = normalizeEntityEvidence(candidate)
+  if (!candidateNormalized) return {}
+
+  const h1 = metadata.h1?.trim()
+  const pageTitle = metadata.pageTitle?.trim()
+  const lead = pageTitle ? titleLead(pageTitle) : undefined
+
+  if (h1 && normalizeEntityEvidence(h1) === candidateNormalized) {
+    return { name: h1, source: "h1" }
+  }
+  if (lead && normalizeEntityEvidence(lead) === candidateNormalized) {
+    return { name: lead, source: "title" }
+  }
+  if (h1 && lead && normalizeEntityEvidence(h1) === normalizeEntityEvidence(lead)) {
+    return { name: h1, source: "h1_title" }
+  }
+  if (trustUrlSlugAsEntity) {
+    return { name: candidate, source: "trusted_url_slug" }
+  }
+  return {}
+}
+
 async function fetchPageMetadata(
   url: string,
   fetchImpl: typeof fetch,
   userAgent: string,
   timeoutSeconds: number
-): Promise<{ title?: string; h1?: string }> {
+): Promise<PageMetadata> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutSeconds * 1000)
   try {
@@ -54,7 +103,7 @@ async function fetchPageMetadata(
     const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
     const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
     return {
-      title: title ? htmlText(title) : undefined,
+      pageTitle: title ? htmlText(title) : undefined,
       h1: h1 ? htmlText(h1) : undefined
     }
   } catch {
@@ -83,6 +132,7 @@ export const sitemapCollector: Collector = {
     const baselineOnRootChange = configBoolean(target.config, "baselineOnRootChange", true)
     const fetchMetadata = configBoolean(target.config, "fetchPageMetadata", true)
     const curlFallback = configBoolean(target.config, "curlFallback", true)
+    const trustUrlSlugAsEntity = configBoolean(target.config, "trustUrlSlugAsEntity", false)
 
     const previousRoots = Array.isArray(cursor?.sitemapUrls)
       ? cursor.sitemapUrls.filter((value): value is string => typeof value === "string")
@@ -145,16 +195,21 @@ export const sitemapCollector: Collector = {
         await context.sitemapStore.updateMetadata(target.id, url, pageMetadata)
       }
       const entityType = configString(target.config, "entityType", "OTHER")
+      const entity = resolveSitemapEntityName(keyword, pageMetadata, trustUrlSlugAsEntity)
+      const entityValidation = entity.name ? "confirmed" : "unconfirmed"
       signals.push(makeSignal("sitemap", target, url, {
-        title: pageMetadata.h1 ?? pageMetadata.title ?? keyword ?? url,
+        title: pageMetadata.h1 ?? pageMetadata.pageTitle ?? keyword ?? url,
         url,
         discoveredAt: context.now,
         metadata: {
           sitemapUrls: roots,
           keyword,
-          pageTitle: pageMetadata.title,
+          pageTitle: pageMetadata.pageTitle,
           h1: pageMetadata.h1,
-          ...(keyword ? { directEntity: keyword, entityType } : {})
+          entityCandidate: keyword,
+          entityValidation,
+          entityNameSource: entity.source,
+          ...(entity.name ? { directEntity: entity.name, entityType } : {})
         }
       }))
     }
