@@ -58,6 +58,42 @@ test("Reddit collector uses the public RSS feed when no OAuth token is configure
   assert.equal(result.nextCursor?.lastSeenFullname, "t3_xyz789")
 })
 
+test("Reddit collector falls back to Arctic Shift when Reddit RSS is blocked", async () => {
+  const requestedUrls: string[] = []
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = String(input)
+    requestedUrls.push(url)
+    if (/^https:\/\/(?:www|old)\.reddit\.com\//.test(url)) return new Response("Forbidden", { status: 403 })
+    return new Response(JSON.stringify({
+      data: [{
+        id: "abc999",
+        title: "Fresh Reddit launch",
+        selftext: "A new tool launched today.",
+        author: "maker999",
+        subreddit: "SideProject",
+        created_utc: 1789441200,
+        url: "https://fresh.example",
+        score: 3,
+        num_comments: 1,
+        over_18: false
+      }]
+    }), { status: 200, headers: { "content-type": "application/json" } })
+  }
+
+  const result = await redditCollector.collect(target, undefined, {
+    now: new Date("2026-09-15T04:00:00Z"),
+    fetch: fetchImpl
+  })
+
+  assert.equal(requestedUrls.filter((url) => /^https:\/\/(?:www|old)\.reddit\.com\//.test(url)).length, 2)
+  assert.match(requestedUrls.at(-1) ?? "", /^https:\/\/arctic-shift\.photon-reddit\.com\/api\/posts\/search\?/)
+  assert.equal(result.signals.length, 1)
+  assert.equal(result.signals[0]?.externalId, "abc999")
+  assert.equal(result.signals[0]?.metadata.transport, "arctic-shift")
+  assert.equal(result.signals[0]?.metadata.outboundUrl, "https://fresh.example")
+  assert.equal(result.nextCursor?.lastSeenFullname, "t3_abc999")
+})
+
 test("Reddit collector can baseline the first RSS run", async () => {
   const fetchImpl: typeof fetch = async () => new Response(atom, {
     status: 200,
