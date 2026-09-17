@@ -93,6 +93,10 @@ function qualityFilter(entities: ExtractedEntity[], signal: StoredSignal): Extra
 }
 
 export async function extractEntities(signal: StoredSignal): Promise<ExtractedEntity[]> {
+  if (signal.sourceType === "sitemap" && signal.metadata.entityValidation === "unconfirmed") {
+    return []
+  }
+
   const rule = extractRuleEntities(signal)
   // directEntity is explicitly configured by a source adapter (for example itch game titles).
   // Treat it as authoritative so sentence-like legitimate names are not rejected by generic headline heuristics.
