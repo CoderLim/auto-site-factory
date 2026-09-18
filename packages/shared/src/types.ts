@@ -55,9 +55,15 @@ export interface SitemapUrlEntry {
   keyword?: string
 }
 
+export interface SitemapPendingEntry {
+  url: string
+  firstSeenAt: Date
+}
+
 export interface SitemapReconcileResult {
   initialized: boolean
   pendingUrls: string[]
+  pendingEntries: SitemapPendingEntry[]
   pendingCount: number
 }
 
