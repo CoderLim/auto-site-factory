@@ -156,6 +156,7 @@ export const sitemapCollector: Collector = {
     }))
 
     let newUrls: string[]
+    const firstSeenByUrl = new Map<string, Date>()
     let pendingCount = 0
     let initialized = cursor?.initialized === true
 
@@ -170,6 +171,9 @@ export const sitemapCollector: Collector = {
       )
       initialized = reconciled.initialized
       newUrls = reconciled.pendingUrls
+      for (const entry of reconciled.pendingEntries) {
+        firstSeenByUrl.set(entry.url, entry.firstSeenAt)
+      }
       pendingCount = reconciled.pendingCount
     } else {
       const previous = new Set(
@@ -197,16 +201,18 @@ export const sitemapCollector: Collector = {
       const entityType = configString(target.config, "entityType", "OTHER")
       const entity = resolveSitemapEntityName(keyword, pageMetadata, trustUrlSlugAsEntity)
       const entityValidation = entity.name ? "confirmed" : "unconfirmed"
+      const sourceFirstSeenAt = firstSeenByUrl.get(url) ?? context.now
       signals.push(makeSignal("sitemap", target, url, {
         title: pageMetadata.h1 ?? pageMetadata.pageTitle ?? keyword ?? url,
         url,
-        discoveredAt: context.now,
+        discoveredAt: sourceFirstSeenAt,
         metadata: {
           sitemapUrls: roots,
           keyword,
           pageTitle: pageMetadata.pageTitle,
           h1: pageMetadata.h1,
           entityCandidate: keyword,
+          sourceFirstSeenAt: sourceFirstSeenAt.toISOString(),
           entityValidation,
           entityNameSource: entity.source,
           ...(entity.name ? { directEntity: entity.name, entityType } : {})
