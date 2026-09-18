@@ -113,8 +113,8 @@ export class SitemapRepository implements SitemapStateStore {
        WHERE source_target_id = $1 AND signal_emitted_at IS NULL AND is_active = TRUE`,
       [targetId]
     )
-    const pending = await this.db.query<{ url: string }>(
-      `SELECT url
+    const pending = await this.db.query<{ url: string; first_seen_at: Date }>(
+      `SELECT url, first_seen_at
        FROM sitemap_urls
        WHERE source_target_id = $1 AND signal_emitted_at IS NULL AND is_active = TRUE
        ORDER BY first_seen_at ASC, url ASC
@@ -122,9 +122,15 @@ export class SitemapRepository implements SitemapStateStore {
       [targetId, limit]
     )
 
+    const pendingEntries = pending.rows.map((row) => ({
+      url: row.url,
+      firstSeenAt: new Date(row.first_seen_at)
+    }))
+
     return {
       initialized,
-      pendingUrls: pending.rows.map((row) => row.url),
+      pendingUrls: pendingEntries.map((entry) => entry.url),
+      pendingEntries,
       pendingCount: pendingCountResult.rows[0]?.count ?? 0
     }
   }
