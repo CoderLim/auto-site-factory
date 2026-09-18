@@ -129,7 +129,8 @@ async function writeClipboard(text: string): Promise<void> {
 export default function App() {
   const [tab, setTab] = useState<Tab>(() => tabForPath())
   const [range, setRange] = useState("1d")
-  const [sourceType, setSourceType] = useState("")
+  const [keywordSourceType, setKeywordSourceType] = useState("")
+  const [discoverySourceType, setDiscoverySourceType] = useState("")
   const [viralPlatform, setViralPlatform] = useState("")
   const [keywordStatus, setKeywordStatus] = useState("pending_validation")
   const [targets, setTargets] = useState<SitemapTarget[]>([])
@@ -169,14 +170,14 @@ export default function App() {
   }
 
   const refreshCandidates = async () => {
-    const result = await api.candidates(range, sourceType || undefined)
+    const result = await api.candidates(range, discoverySourceType || undefined)
     setCandidates(result.candidates)
     setEnabledTargetCount(result.enabledTargetCount)
   }
 
   const refreshKeywords = async () => {
     const result = await api.keywords(range, {
-      sourceType: sourceType || undefined,
+      sourceType: keywordSourceType || undefined,
       status: keywordStatus || undefined
     })
     setKeywords(result.keywords)
@@ -224,7 +225,7 @@ export default function App() {
     if (loading) return
     if (tab === "discover" || tab === "viral") void refreshCandidates().catch((e) => setError(e instanceof Error ? e.message : String(e)))
     if (tab === "keywords") void refreshKeywords().catch((e) => setError(e instanceof Error ? e.message : String(e)))
-  }, [tab, range, sourceType, keywordStatus])
+  }, [tab, range, discoverySourceType, keywordSourceType, keywordStatus])
 
   useEffect(() => {
     if (tab !== "steam") return
@@ -412,7 +413,7 @@ export default function App() {
                   <option value="low_searchability">低可搜性</option>
                   <option value="">全部状态</option>
                 </select>
-                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                <select value={keywordSourceType} onChange={(event) => setKeywordSourceType(event.target.value)}>
                   <option value="">全部来源</option>
                   {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                 </select>
@@ -451,7 +452,7 @@ export default function App() {
             <div className="toolbar">
               <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
               <div className="filter-row">
-                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                <select value={discoverySourceType} onChange={(event) => setDiscoverySourceType(event.target.value)}>
                   <option value="">全部来源</option>
                   {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                 </select>
@@ -496,7 +497,7 @@ export default function App() {
             <div className="alert info">这里展示 Layer 1 原始实体，目标是高召回。它们不是 Google 关键词，因此不会直接拿实体名做搜索量结论。</div>
             <div className="toolbar">
               <div className="segmented">{ranges.map((item) => <button key={item.value} className={range === item.value ? "active" : ""} onClick={() => setRange(item.value)}>{item.label}</button>)}</div>
-              <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+              <select value={discoverySourceType} onChange={(event) => setDiscoverySourceType(event.target.value)}>
                 <option value="">全部来源</option>
                 {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
               </select>
