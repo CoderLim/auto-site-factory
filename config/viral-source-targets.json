@@ -46,7 +46,8 @@
       "limit": 50,
       "maxPages": 2,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "keywordEligible": true
     }
   },
   {
@@ -63,7 +64,8 @@
       "limit": 50,
       "maxPages": 2,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "keywordEligible": true
     }
   },
   {
@@ -80,7 +82,8 @@
       "limit": 50,
       "maxPages": 2,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "keywordEligible": true
     }
   },
   {
@@ -97,7 +100,8 @@
       "limit": 50,
       "maxPages": 2,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "keywordEligible": true
     }
   },
   {
@@ -114,7 +118,8 @@
       "limit": 50,
       "maxPages": 2,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "keywordEligible": true
     }
   },
   {
@@ -131,7 +136,8 @@
       "limit": 50,
       "maxPages": 2,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "keywordEligible": true
     }
   },
   {
