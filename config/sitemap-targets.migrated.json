@@ -36,27 +36,6 @@
     }
   },
   {
-    "id": "sitemap-gamepix",
-    "sourceType": "sitemap",
-    "name": "Gamepix Games Sitemaps",
-    "scope": "web-games",
-    "enabled": true,
-    "config": {
-      "sourceRole": "discovery",
-      "sitemapUrl": "https://www.gamepix.com/sitemaps/index.xml",
-      "urlIncludes": [
-        "/play/"
-      ],
-      "entityType": "GAME",
-      "baselineOnFirstRun": true,
-      "fetchPageMetadata": true,
-      "curlFallback": true,
-      "maxSitemaps": 100,
-      "maxUrls": 100000,
-      "maxNewUrls": 50
-    }
-  },
-  {
     "id": "sitemap-lagged",
     "sourceType": "sitemap",
     "name": "Lagged Text Sitemap",
