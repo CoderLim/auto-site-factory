@@ -3,6 +3,7 @@ import AppChartsPanel from "./AppChartsPanel"
 import {
   KEYWORD_SOURCE_TYPE_OPTIONS,
   SOURCE_TYPE_OPTIONS,
+  VIRAL_SOURCE_TYPE_OPTIONS,
   api,
   getDashboardToken,
   setDashboardToken,
@@ -455,7 +456,7 @@ export default function App() {
               <div className="filter-row">
                 <select value={discoverySourceType} onChange={(event) => setDiscoverySourceType(event.target.value)}>
                   <option value="">全部来源</option>
-                  {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                  {VIRAL_SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                 </select>
                 <select value={viralPlatform} onChange={(event) => setViralPlatform(event.target.value)}>
                   <option value="">全部平台</option>
