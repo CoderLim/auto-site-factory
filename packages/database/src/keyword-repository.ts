@@ -39,6 +39,14 @@ const ELIGIBLE_MENTION = `
   )
 `
 
+const KEYWORD_ELIGIBLE_MENTION = `
+  ${ELIGIBLE_MENTION}
+  AND (
+    e.scope <> 'viral'
+    OR COALESCE(st.config->>'keywordEligible', 'false') = 'true'
+  )
+`
+
 export class KeywordRepository {
   constructor(private readonly db: Database) {}
 
@@ -48,7 +56,16 @@ export class KeywordRepository {
       `DELETE FROM keyword_candidates kc
        USING entities e
        WHERE kc.entity_id = e.id
-         AND e.scope = ANY($1::TEXT[])`,
+         AND e.scope = ANY($1::TEXT[])
+         AND NOT EXISTS (
+           SELECT 1
+           FROM entity_mentions em
+           JOIN raw_signals rs ON rs.id = em.raw_signal_id
+           JOIN source_targets st ON st.id = rs.source_target_id
+           WHERE em.entity_id = kc.entity_id
+             AND ${ELIGIBLE_MENTION}
+             AND COALESCE(st.config->>'keywordEligible', 'false') = 'true'
+         )`,
       [scopes]
     )
     return result.rowCount ?? 0
@@ -57,14 +74,16 @@ export class KeywordRepository {
   async deleteIneligibleKeywords(): Promise<number> {
     const result = await this.db.query(
       `DELETE FROM keyword_candidates kc
-       WHERE NOT EXISTS (
-         SELECT 1
-         FROM entity_mentions em
-         JOIN raw_signals rs ON rs.id = em.raw_signal_id
-         JOIN source_targets st ON st.id = rs.source_target_id
-         WHERE em.entity_id = kc.entity_id
-           AND ${ELIGIBLE_MENTION}
-       )`
+       USING entities e
+       WHERE kc.entity_id = e.id
+         AND NOT EXISTS (
+           SELECT 1
+           FROM entity_mentions em
+           JOIN raw_signals rs ON rs.id = em.raw_signal_id
+           JOIN source_targets st ON st.id = rs.source_target_id
+           WHERE em.entity_id = kc.entity_id
+             AND ${KEYWORD_ELIGIBLE_MENTION}
+         )`
     )
     return result.rowCount ?? 0
   }
@@ -82,11 +101,10 @@ export class KeywordRepository {
          JOIN raw_signals rs ON rs.id = em.raw_signal_id
          JOIN source_targets st ON st.id = rs.source_target_id
          WHERE em.entity_id = e.id
-           AND ${ELIGIBLE_MENTION}
+           AND ${KEYWORD_ELIGIBLE_MENTION}
        ) eligible ON eligible.first_seen_at IS NOT NULL
        LEFT JOIN keyword_candidates kc ON kc.entity_id = e.id
        WHERE kc.id IS NULL
-         AND e.scope <> 'viral'
        ORDER BY eligible.first_seen_at ASC, c.id ASC
        LIMIT $1`,
       [limit]
@@ -137,7 +155,7 @@ export class KeywordRepository {
   ): Promise<KeywordCandidateRow[]> {
     const limit = options.limit ?? 500
     const params: unknown[] = [since.toISOString()]
-    const where = ["eligible.first_seen_at >= $1", "e.scope <> 'viral'"]
+    const where = ["eligible.first_seen_at >= $1"]
 
     if (options.status) {
       params.push(options.status)
@@ -167,7 +185,7 @@ export class KeywordRepository {
          JOIN raw_signals rs ON rs.id = em.raw_signal_id
          JOIN source_targets st ON st.id = rs.source_target_id
          WHERE em.entity_id = kc.entity_id
-           AND ${ELIGIBLE_MENTION}
+           AND ${KEYWORD_ELIGIBLE_MENTION}
        ) eligible ON eligible.mention_count > 0
        WHERE ${where.join(" AND ")}
        ORDER BY eligible.first_seen_at DESC, kc.searchability_score DESC, kc.id DESC
