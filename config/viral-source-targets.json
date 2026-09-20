@@ -135,30 +135,6 @@
     }
   },
   {
-    "id": "official-api-digg-trending-viral",
-    "sourceType": "official_api",
-    "name": "Digg AI Trending Events",
-    "scope": "viral",
-    "enabled": true,
-    "config": {
-      "sourceRole": "discovery",
-      "platform": "digg",
-      "url": "https://di.gg/api/trending/status",
-      "itemsPath": "events",
-      "idField": "id",
-      "nameFields": ["label"],
-      "publishedAtField": "at",
-      "authorField": "username",
-      "urlField": "permalink",
-      "includeField": "type",
-      "includeValues": ["cluster_detected", "fast_climb"],
-      "directEntity": true,
-      "entityType": "OTHER",
-      "baselineOnFirstRun": false,
-      "cursorOverlapMinutes": 30
-    }
-  },
-  {
     "id": "rss-producthunt-viral",
     "sourceType": "rss",
     "name": "Product Hunt RSS",
@@ -194,7 +170,10 @@
     "name": "xQc YouTube (retired fixed-channel source)",
     "scope": "viral",
     "enabled": false,
-    "config": { "sourceRole": "retired", "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring" }
+    "config": {
+      "sourceRole": "retired",
+      "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring"
+    }
   },
   {
     "id": "youtube-asmongold-viral",
@@ -202,7 +181,10 @@
     "name": "Asmongold TV YouTube (retired fixed-channel source)",
     "scope": "viral",
     "enabled": false,
-    "config": { "sourceRole": "retired", "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring" }
+    "config": {
+      "sourceRole": "retired",
+      "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring"
+    }
   },
   {
     "id": "youtube-kaicenat-live-viral",
@@ -210,7 +192,10 @@
     "name": "Kai Cenat Live YouTube (retired fixed-channel source)",
     "scope": "viral",
     "enabled": false,
-    "config": { "sourceRole": "retired", "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring" }
+    "config": {
+      "sourceRole": "retired",
+      "disabledReason": "Use candidate-triggered YouTube verification instead of fixed creator monitoring"
+    }
   },
   {
     "id": "twitch-viral-creators",
@@ -218,6 +203,9 @@
     "name": "Viral Twitch Creators (retired)",
     "scope": "viral",
     "enabled": false,
-    "config": { "sourceRole": "retired", "disabledReason": "Not part of the current Viral Radar core-source plan" }
+    "config": {
+      "sourceRole": "retired",
+      "disabledReason": "Not part of the current Viral Radar core-source plan"
+    }
   }
 ]
