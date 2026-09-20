@@ -151,7 +151,7 @@
     "sourceType": "sitemap",
     "name": "itch.io Sitemap",
     "scope": "web-games",
-    "enabled": true,
+    "enabled": false,
     "config": {
       "sourceRole": "discovery",
       "sitemapUrl": "https://itch.io/sitemap.xml",
