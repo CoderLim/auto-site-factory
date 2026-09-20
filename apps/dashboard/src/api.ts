@@ -151,6 +151,12 @@ export const SOURCE_TYPE_OPTIONS = [
   { value: "sitemap", label: "Sitemap" }
 ] as const
 
+export const KEYWORD_SOURCE_TYPE_OPTIONS = [
+  { value: "official_api", label: "Official API" },
+  { value: "wiki", label: "Wiki" },
+  { value: "sitemap", label: "Sitemap" }
+] as const
+
 const TOKEN_KEY = "auto-site-factory-dashboard-token"
 
 export function getDashboardToken(): string {
