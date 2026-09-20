@@ -48,8 +48,7 @@ export class KeywordRepository {
       `DELETE FROM keyword_candidates kc
        USING entities e
        WHERE kc.entity_id = e.id
-         AND e.scope = ANY($1::TEXT[])
-         AND kc.generation_kind = 'scope_context'`,
+         AND e.scope = ANY($1::TEXT[])`,
       [scopes]
     )
     return result.rowCount ?? 0
@@ -87,6 +86,7 @@ export class KeywordRepository {
        ) eligible ON eligible.first_seen_at IS NOT NULL
        LEFT JOIN keyword_candidates kc ON kc.entity_id = e.id
        WHERE kc.id IS NULL
+         AND e.scope <> 'viral'
        ORDER BY eligible.first_seen_at ASC, c.id ASC
        LIMIT $1`,
       [limit]
@@ -137,7 +137,7 @@ export class KeywordRepository {
   ): Promise<KeywordCandidateRow[]> {
     const limit = options.limit ?? 500
     const params: unknown[] = [since.toISOString()]
-    const where = ["eligible.first_seen_at >= $1"]
+    const where = ["eligible.first_seen_at >= $1", "e.scope <> 'viral'"]
 
     if (options.status) {
       params.push(options.status)
