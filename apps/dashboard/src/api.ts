@@ -154,7 +154,14 @@ export const SOURCE_TYPE_OPTIONS = [
 export const KEYWORD_SOURCE_TYPE_OPTIONS = [
   { value: "official_api", label: "Official API" },
   { value: "wiki", label: "Wiki" },
+  { value: "reddit", label: "Reddit" },
   { value: "sitemap", label: "Sitemap" }
+] as const
+
+export const VIRAL_SOURCE_TYPE_OPTIONS = [
+  { value: "reddit", label: "Reddit" },
+  { value: "hn", label: "Hacker News" },
+  { value: "rss", label: "RSS / Atom" }
 ] as const
 
 const TOKEN_KEY = "auto-site-factory-dashboard-token"
