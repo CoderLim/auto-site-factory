@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react"
 import AppChartsPanel from "./AppChartsPanel"
 import {
+  KEYWORD_SOURCE_TYPE_OPTIONS,
   SOURCE_TYPE_OPTIONS,
   api,
   getDashboardToken,
@@ -415,7 +416,7 @@ export default function App() {
                 </select>
                 <select value={keywordSourceType} onChange={(event) => setKeywordSourceType(event.target.value)}>
                   <option value="">全部来源</option>
-                  {SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+                  {KEYWORD_SOURCE_TYPE_OPTIONS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
                 </select>
                 <button className="copy-keywords" onClick={() => void copyKeywords(keywords.map((item) => item.keyword))} disabled={keywords.length === 0}>复制关键词</button>
               </div>
