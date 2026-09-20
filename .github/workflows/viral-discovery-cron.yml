@@ -59,7 +59,6 @@ jobs:
         run: |
           node apps/worker/dist/index.js --once --source=hn --scope=viral
           node apps/worker/dist/index.js --once --source=reddit --scope=viral
-          node apps/worker/dist/index.js --once --source=official_api --scope=viral
           node apps/worker/dist/index.js --once --source=rss --scope=viral
 
       - name: Revalidate recent viral candidates with the current entity-quality rules
