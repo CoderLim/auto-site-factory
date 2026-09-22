@@ -6,6 +6,8 @@ const DEFAULT_HOURS = 30 * 24
 const parsedHours = Number(process.env.VIRAL_REVALIDATE_HOURS ?? DEFAULT_HOURS)
 const hours = Number.isFinite(parsedHours) ? Math.min(90 * 24, Math.max(24, parsedHours)) : DEFAULT_HOURS
 const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000)
+const sourceFilterRaw = process.env.VIRAL_REVALIDATE_SOURCE?.trim()
+const sourceFilter = sourceFilterRaw ? sourceFilterRaw as SignalSourceType : undefined
 
 const db = new Database()
 const discovery = new DiscoveryRepository(db)
@@ -56,8 +58,9 @@ try {
      JOIN source_targets st ON st.id = rs.source_target_id
      WHERE st.scope = 'viral'
        AND rs.discovered_at >= $1
+       AND ($2::text IS NULL OR rs.source_type = $2)
      ORDER BY rs.discovered_at ASC, rs.id ASC`,
-    [cutoff.toISOString()]
+    [cutoff.toISOString(), sourceFilter ?? null]
   )
 
   const signalIds = rows.rows.map((row) => String(row.id))
@@ -177,6 +180,7 @@ try {
 
   console.log(JSON.stringify({
     event: "viral_revalidation_complete",
+    source: sourceFilter ?? "all",
     hours,
     cutoff: cutoff.toISOString(),
     signalsScanned: rows.rowCount ?? rows.rows.length,
