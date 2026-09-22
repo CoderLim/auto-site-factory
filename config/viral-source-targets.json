@@ -2,7 +2,7 @@
   {
     "id": "tiktok-trending-us-viral",
     "sourceType": "tiktok",
-    "name": "TikTok Explore Trending (US)",
+    "name": "TikTok Trends (US)",
     "scope": "viral",
     "enabled": true,
     "config": {
@@ -15,7 +15,9 @@
       "maxItems": 50,
       "historyLimit": 500,
       "baselineOnFirstRun": false,
-      "snapshotExisting": true
+      "snapshotExisting": true,
+      "discoverListUrl": "https://us.tiktok.com/node/share/discover/list",
+      "discoverMirrorUrl": "https://raw.githubusercontent.com/antiops/tiktok-trending-data/main/discover-list-us.json"
     }
   },
   {
