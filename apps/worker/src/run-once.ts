@@ -8,6 +8,7 @@ const POLLING_SOURCES = new Set<SignalSourceType>([
   "wiki_gg",
   "reddit",
   "youtube",
+  "tiktok",
   "twitch",
   "hn",
   "rss",
