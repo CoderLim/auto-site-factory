@@ -33,6 +33,7 @@ function metricNumber(metadata: Record<string, unknown>, keys: string[]): number
 }
 
 const VIRAL_SOURCE_BONUS: Partial<Record<SignalSourceType, number>> = {
+  tiktok: 10,
   twitch: 8,
   x: 8,
   youtube: 6,

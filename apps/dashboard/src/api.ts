@@ -159,6 +159,7 @@ export const KEYWORD_SOURCE_TYPE_OPTIONS = [
 ] as const
 
 export const VIRAL_SOURCE_TYPE_OPTIONS = [
+  { value: "tiktok", label: "TikTok" },
   { value: "reddit", label: "Reddit" },
   { value: "hn", label: "Hacker News" },
   { value: "rss", label: "RSS / Atom" }

@@ -472,7 +472,7 @@ export default function App() {
             </div>
             <div className="card table-card">
               <table>
-                <thead><tr><th>实体</th><th>Viral Score</th><th>阶段</th><th>传播判断</th><th>平台</th><th>Score / Ratings Δ24h</th><th>Comments Δ24h</th><th>采样</th><th>作者</th><th>提及</th><th>首次发现</th></tr></thead>
+                <thead><tr><th>实体</th><th>Viral Score</th><th>阶段</th><th>传播判断</th><th>平台</th><th>Likes / Score Δ24h</th><th>Comments Δ24h</th><th>Views Δ24h</th><th>Shares Δ24h</th><th>采样</th><th>作者</th><th>提及</th><th>首次发现</th></tr></thead>
                 <tbody>
                   {viralCandidates.map((candidate) => (
                     <tr key={candidate.id}>
@@ -483,6 +483,8 @@ export default function App() {
                       <td>{candidate.platforms.join(" → ") || "—"}</td>
                       <td className={candidate.scoreDelta24h > 0 ? "positive" : ""}>{formatDelta(candidate.scoreDelta24h)}</td>
                       <td className={candidate.commentDelta24h > 0 ? "positive" : ""}>{formatDelta(candidate.commentDelta24h)}</td>
+                      <td className={candidate.viewDelta24h > 0 ? "positive" : ""}>{formatDelta(candidate.viewDelta24h)}</td>
+                      <td className={candidate.shareDelta24h > 0 ? "positive" : ""}>{formatDelta(candidate.shareDelta24h)}</td>
                       <td>{candidate.metricSampleCount}</td>
                       <td>{candidate.authorCount}</td>
                       <td>{candidate.mentionCount}</td>

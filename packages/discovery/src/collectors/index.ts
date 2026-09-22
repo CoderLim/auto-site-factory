@@ -4,6 +4,7 @@ import { officialApiCollector } from "./official-api.js"
 import { redditCollector } from "./reddit.js"
 import { rssCollector } from "./rss.js"
 import { sitemapCollector } from "./sitemap.js"
+import { tiktokCollector } from "./tiktok.js"
 import { twitchCollector } from "./twitch.js"
 import { wikiCollector } from "./wiki.js"
 import { wikiGgCollector } from "./wiki-gg.js"
@@ -16,6 +17,7 @@ const collectors: Partial<Record<SignalSourceType, Collector>> = {
   wiki_gg: wikiGgCollector,
   reddit: redditCollector,
   youtube: youtubeCollector,
+  tiktok: tiktokCollector,
   twitch: twitchCollector,
   hn: hnCollector,
   rss: rssCollector,
@@ -30,5 +32,6 @@ export function getCollector(type: SignalSourceType): Collector | undefined {
 export * from "./hn.js"
 export * from "./rss.js"
 export * from "./sitemap.js"
+export * from "./tiktok.js"
 export * from "./twitch.js"
 export * from "./wiki-gg.js"

@@ -4,6 +4,7 @@ export type SignalSourceType =
   | "wiki_gg"
   | "reddit"
   | "youtube"
+  | "tiktok"
   | "twitch"
   | "hn"
   | "rss"
