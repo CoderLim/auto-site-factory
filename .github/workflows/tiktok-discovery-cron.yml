@@ -1,0 +1,68 @@
+name: TikTok Discovery Cron
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/tiktok-discovery-cron.yml"
+      - "packages/discovery/**"
+      - "packages/database/**"
+      - "apps/worker/**"
+      - "config/viral-source-targets.json"
+  schedule:
+    - cron: "13 */2 * * *"
+
+concurrency:
+  group: tiktok-discovery-cron
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SOURCE_TARGETS_FILE: config/viral-source-targets.json
+      VIRAL_REVALIDATE_HOURS: 48
+      VIRAL_REVALIDATE_SOURCE: tiktok
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      # Without APIFY_TOKEN the collector uses TikTok's public discover list.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Require database
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "Missing required GitHub Actions secret: DATABASE_URL"
+            exit 1
+          fi
+
+      - run: npm install
+      - run: npm run build -w @factory/shared
+      - run: npm run build -w @factory/database
+      - run: npm run build -w @factory/discovery
+      - run: npm run build -w @factory/worker
+
+      - name: Test discovery collectors
+        run: npm test -w @factory/discovery
+
+      - name: Migrate database
+        run: node packages/database/dist/migrate.js
+
+      - name: Sync viral source targets
+        run: node apps/worker/dist/sync-targets.js
+
+      - name: Collect TikTok trends
+        run: node apps/worker/dist/index.js --once --source=tiktok --scope=viral
+
+      - name: Report TikTok smoke data
+        run: node apps/worker/dist/tiktok-smoke.js
+
+      - name: Revalidate TikTok candidates
+        run: node apps/worker/dist/revalidate-viral.js
