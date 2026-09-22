@@ -137,3 +137,32 @@ test("old or ambiguous exact-title entities do not pass without concrete novelty
     assert.deepEqual(await names({ title, url }), [], title)
   }
 })
+
+
+test("TikTok discover hashtags and music become explicit viral entities", async () => {
+  assert.deepEqual(await names({
+    sourceType: "tiktok",
+    sourceTargetId: "tiktok-trending-us-viral",
+    metadata: {
+      platform: "tiktok",
+      provider: "tiktok-web-discover",
+      contentType: "hashtag"
+    },
+    title: "#TikTokShopMyWellnessJourney",
+    content: "TikTok trending hashtag: #TikTokShopMyWellnessJourney",
+    url: "https://www.tiktok.com/tag/TikTokShopMyWellnessJourney"
+  }), ["TikTokShopMyWellnessJourney"])
+
+  assert.deepEqual(await names({
+    sourceType: "tiktok",
+    sourceTargetId: "tiktok-trending-us-viral",
+    metadata: {
+      platform: "tiktok",
+      provider: "tiktok-web-discover",
+      contentType: "music"
+    },
+    title: "The Assignment - taymoneyduh",
+    content: "TikTok trending music: The Assignment - taymoneyduh",
+    url: "https://www.tiktok.com/music/The-Assignment-6990410706927536902"
+  }), ["The Assignment - taymoneyduh"])
+})

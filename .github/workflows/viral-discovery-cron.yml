@@ -62,11 +62,11 @@ jobs:
       - name: Report TikTok smoke data
         run: node apps/worker/dist/tiktok-smoke.js
 
+      - name: Revalidate recent viral candidates with the current entity-quality rules
+        run: node apps/worker/dist/revalidate-viral.js
+
       - name: Collect Viral Radar core discovery river
         run: |
           node apps/worker/dist/index.js --once --source=hn --scope=viral
           node apps/worker/dist/index.js --once --source=reddit --scope=viral
           node apps/worker/dist/index.js --once --source=rss --scope=viral
-
-      - name: Revalidate recent viral candidates with the current entity-quality rules
-        run: node apps/worker/dist/revalidate-viral.js
