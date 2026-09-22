@@ -1,31 +1,33 @@
-name: Viral Discovery Cron
+name: TikTok Discovery Cron
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/viral-discovery-cron.yml"
+      - ".github/workflows/tiktok-discovery-cron.yml"
       - "packages/discovery/**"
       - "packages/database/**"
       - "apps/worker/**"
       - "config/viral-source-targets.json"
   schedule:
-    - cron: "43 */3 * * *"
+    - cron: "13 */2 * * *"
 
 concurrency:
-  group: viral-discovery-cron
+  group: tiktok-discovery-cron
   cancel-in-progress: false
 
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SOURCE_TARGETS_FILE: config/viral-source-targets.json
       VIRAL_REVALIDATE_HOURS: 48
-      # Intentionally omit LLM_API_* here: entity extraction stays on the free heuristic path.
+      VIRAL_REVALIDATE_SOURCE: tiktok
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      # Without APIFY_TOKEN the collector uses TikTok's public discover list.
 
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +48,7 @@ jobs:
       - run: npm run build -w @factory/database
       - run: npm run build -w @factory/discovery
       - run: npm run build -w @factory/worker
+
       - name: Test discovery collectors
         run: npm test -w @factory/discovery
 
@@ -55,8 +58,11 @@ jobs:
       - name: Sync viral source targets
         run: node apps/worker/dist/sync-targets.js
 
-      - name: Collect Viral Radar core discovery river
-        run: |
-          node apps/worker/dist/index.js --once --source=hn --scope=viral
-          node apps/worker/dist/index.js --once --source=reddit --scope=viral
-          node apps/worker/dist/index.js --once --source=rss --scope=viral
+      - name: Collect TikTok trends
+        run: node apps/worker/dist/index.js --once --source=tiktok --scope=viral
+
+      - name: Report TikTok smoke data
+        run: node apps/worker/dist/tiktok-smoke.js
+
+      - name: Revalidate TikTok candidates
+        run: node apps/worker/dist/revalidate-viral.js
