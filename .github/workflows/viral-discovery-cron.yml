@@ -25,7 +25,6 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SOURCE_TARGETS_FILE: config/viral-source-targets.json
       VIRAL_REVALIDATE_HOURS: 48
-      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
       # Intentionally omit LLM_API_* here: entity extraction stays on the free heuristic path.
 
     steps:
@@ -55,17 +54,6 @@ jobs:
 
       - name: Sync viral source targets
         run: node apps/worker/dist/sync-targets.js
-
-      - name: Collect TikTok trends
-        run: node apps/worker/dist/index.js --once --source=tiktok --scope=viral
-
-      - name: Report TikTok smoke data
-        run: node apps/worker/dist/tiktok-smoke.js
-
-      - name: Revalidate TikTok candidates
-        env:
-          VIRAL_REVALIDATE_SOURCE: tiktok
-        run: node apps/worker/dist/revalidate-viral.js
 
       - name: Collect Viral Radar core discovery river
         run: |
