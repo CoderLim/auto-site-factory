@@ -1,5 +1,24 @@
 [
   {
+    "id": "tiktok-trending-us-viral",
+    "sourceType": "tiktok",
+    "name": "TikTok Explore Trending (US)",
+    "scope": "viral",
+    "enabled": true,
+    "config": {
+      "sourceRole": "discovery",
+      "platform": "tiktok",
+      "provider": "apify",
+      "actorId": "xtracto~tiktok-trending-scraper",
+      "tokenEnv": "APIFY_TOKEN",
+      "countryCode": "US",
+      "maxItems": 50,
+      "historyLimit": 500,
+      "baselineOnFirstRun": false,
+      "snapshotExisting": true
+    }
+  },
+  {
     "id": "hn-newstories-viral",
     "sourceType": "hn",
     "name": "Hacker News New Stories",
