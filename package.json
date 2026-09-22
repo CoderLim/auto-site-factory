@@ -23,7 +23,8 @@
     "api": "npm run build && node --env-file=.env apps/api/dist/index.js",
     "dashboard:dev": "npm run dev -w @factory/dashboard",
     "dashboard:build": "npm run build -w @factory/dashboard",
-    "db:migrate": "npm run build -w @factory/shared && npm run build -w @factory/database && node --env-file=.env packages/database/dist/migrate.js"
+    "db:migrate": "npm run build -w @factory/shared && npm run build -w @factory/database && node --env-file=.env packages/database/dist/migrate.js",
+    "tiktok:once": "npm run build && node --env-file=.env apps/worker/dist/index.js --once --source=tiktok --scope=viral && node --env-file=.env apps/worker/dist/tiktok-smoke.js"
   },
   "engines": {
     "node": ">=20"
