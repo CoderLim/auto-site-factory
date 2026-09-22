@@ -56,23 +56,17 @@ jobs:
       - name: Sync viral source targets
         run: node apps/worker/dist/sync-targets.js
 
+      - name: Collect TikTok trends
+        run: node apps/worker/dist/index.js --once --source=tiktok --scope=viral
+
+      - name: Report TikTok smoke data
+        run: node apps/worker/dist/tiktok-smoke.js
+
       - name: Collect Viral Radar core discovery river
         run: |
           node apps/worker/dist/index.js --once --source=hn --scope=viral
           node apps/worker/dist/index.js --once --source=reddit --scope=viral
           node apps/worker/dist/index.js --once --source=rss --scope=viral
-
-      - name: Collect TikTok Explore trends
-        if: env.APIFY_TOKEN != ''
-        run: node apps/worker/dist/index.js --once --source=tiktok --scope=viral
-
-      - name: Report TikTok smoke data
-        if: env.APIFY_TOKEN != ''
-        run: node apps/worker/dist/tiktok-smoke.js
-
-      - name: Note missing TikTok credential
-        if: env.APIFY_TOKEN == ''
-        run: echo "TikTok skipped because APIFY_TOKEN is not configured."
 
       - name: Revalidate recent viral candidates with the current entity-quality rules
         run: node apps/worker/dist/revalidate-viral.js
