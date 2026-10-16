@@ -10,9 +10,9 @@ on:
     paths:
       - ".github/workflows/discovery-cron.yml"
   schedule:
-    # GitHub cron is UTC. This runs five times per day at 00:17, 05:17,
-    # 10:17, 15:17 and 20:17 UTC (roughly every five hours).
-    - cron: "17 0,5,10,15,20 * * *"
+    # GitHub cron is UTC. Run twice daily at 04:00 and 16:00 UTC,
+    # corresponding to 12:00 (noon) and 00:00 (midnight) Asia/Shanghai (UTC+8).
+    - cron: "0 4,16 * * *"
 
 concurrency:
   group: discovery-cron
