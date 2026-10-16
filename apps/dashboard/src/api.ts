@@ -123,6 +123,22 @@ export type AppChartNewTerm = {
   appName?: string
 }
 
+export type MediaIoPage = {
+  url: string
+  keyword?: string
+  pageTitle?: string
+  h1?: string
+  firstSeenAt: string
+  lastSeenAt: string
+  active: boolean
+}
+
+export type MediaIoPagesResult = {
+  pages: MediaIoPage[]
+  discoveredCount: number
+  generatorCount: number
+}
+
 export type SitemapRun = {
   runId: string
   targetId: string
@@ -238,6 +254,10 @@ export const api = {
     if (options.newAppsOnly) params.set("newAppsOnly", "true")
     if (options.newTermsOnly) params.set("newTermsOnly", "true")
     return request<{ entries: AppChartEntry[]; newTerms: AppChartNewTerm[] }>(`/api/app-charts?${params}`)
+  },
+  mediaIoPages: (range: string, generatorsOnly = true) => {
+    const params = new URLSearchParams({ range, generatorsOnly: String(generatorsOnly) })
+    return request<MediaIoPagesResult>(`/api/sitemap/media-io?${params}`)
   },
   targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),
   runs: () => request<{ runs: SitemapRun[] }>("/api/sitemap/runs"),
