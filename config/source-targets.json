@@ -9,7 +9,9 @@
       "sourceRole": "discovery",
       "url": "https://huggingface.co/api/models?sort=createdAt&direction=-1&limit=100",
       "idField": "id",
-      "nameFields": ["id"],
+      "nameFields": [
+        "id"
+      ],
       "nameTransform": "basename",
       "publishedAtField": "createdAt",
       "entityType": "AI_MODEL",
@@ -26,7 +28,9 @@
       "sourceRole": "discovery",
       "url": "https://huggingface.co/api/spaces?sort=createdAt&direction=-1&limit=100",
       "idField": "id",
-      "nameFields": ["id"],
+      "nameFields": [
+        "id"
+      ],
       "nameTransform": "basename",
       "publishedAtField": "createdAt",
       "entityType": "TOOL",
@@ -42,9 +46,14 @@
     "config": {
       "sourceRole": "tracking",
       "url": "https://api.github.com/repos/Comfy-Org/ComfyUI/releases?per_page=20",
-      "headers": { "Accept": "application/vnd.github+json" },
+      "headers": {
+        "Accept": "application/vnd.github+json"
+      },
       "idField": "id",
-      "nameFields": ["name", "tag_name"],
+      "nameFields": [
+        "name",
+        "tag_name"
+      ],
       "publishedAtField": "published_at",
       "contentField": "body",
       "urlField": "html_url",
@@ -61,9 +70,14 @@
     "config": {
       "sourceRole": "tracking",
       "url": "https://api.github.com/repos/anthropics/claude-code/releases?per_page=20",
-      "headers": { "Accept": "application/vnd.github+json" },
+      "headers": {
+        "Accept": "application/vnd.github+json"
+      },
       "idField": "id",
-      "nameFields": ["name", "tag_name"],
+      "nameFields": [
+        "name",
+        "tag_name"
+      ],
       "publishedAtField": "published_at",
       "contentField": "body",
       "urlField": "html_url",
@@ -80,9 +94,14 @@
     "config": {
       "sourceRole": "tracking",
       "url": "https://api.github.com/repos/openai/codex/releases?per_page=20",
-      "headers": { "Accept": "application/vnd.github+json" },
+      "headers": {
+        "Accept": "application/vnd.github+json"
+      },
       "idField": "id",
-      "nameFields": ["name", "tag_name"],
+      "nameFields": [
+        "name",
+        "tag_name"
+      ],
       "publishedAtField": "published_at",
       "contentField": "body",
       "urlField": "html_url",
@@ -130,6 +149,44 @@
     }
   },
   {
+    "id": "sitemap-media-io",
+    "sourceType": "sitemap",
+    "name": "Media.io Sitemap",
+    "scope": "ai-tools",
+    "enabled": true,
+    "config": {
+      "sourceRole": "tracking",
+      "sitemapUrl": "https://www.media.io/sitemap.xml",
+      "baselineOnFirstRun": true,
+      "baselineOnRootChange": true,
+      "fetchPageMetadata": true,
+      "curlFallback": true,
+      "requireCompleteSnapshot": true,
+      "entityType": "TOOL",
+      "maxSitemaps": 200,
+      "maxUrls": 100000,
+      "maxNewUrls": 50,
+      "timeoutSeconds": 12,
+      "urlExcludes": [
+        "/zh/",
+        "/jp/",
+        "/fr/",
+        "/de/",
+        "/es/",
+        "/pt/",
+        "/ko/",
+        "/it/",
+        "/ru/",
+        "/ar/",
+        "/id/",
+        "/vi/",
+        "/tr/",
+        "/nl/",
+        "/hi/"
+      ]
+    }
+  },
+  {
     "id": "sitemap-futurepedia",
     "sourceType": "sitemap",
     "name": "Futurepedia Sitemap",
@@ -159,7 +216,17 @@
       "maxSitemaps": 30,
       "maxUrls": 20000,
       "maxNewUrls": 50,
-      "urlExcludes": ["/vi/", "/de/", "/fr/", "/ja/", "/ko/", "/es/", "/pt/", "/ru/", "/ar/"]
+      "urlExcludes": [
+        "/vi/",
+        "/de/",
+        "/fr/",
+        "/ja/",
+        "/ko/",
+        "/es/",
+        "/pt/",
+        "/ru/",
+        "/ar/"
+      ]
     }
   },
   {
