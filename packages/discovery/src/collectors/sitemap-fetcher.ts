@@ -18,6 +18,7 @@ export interface SitemapFetchOptions {
 export interface SitemapCollectionResult {
   urls: string[]
   sitemapCount: number
+  truncated: boolean
 }
 
 export function decodeSitemapBytes(bytes: Uint8Array): string {
@@ -79,6 +80,7 @@ export async function collectSitemap(
   const visited = new Set<string>()
   const seenUrls = new Set<string>()
   const urls: string[] = []
+  let truncated = false
 
   while (queue.length > 0 && visited.size < options.maxSitemaps && urls.length < options.maxUrls) {
     const current = queue.shift()
@@ -88,20 +90,29 @@ export async function collectSitemap(
     const parsed = parseSitemapDocument(await fetchSitemapText(current, fetchImpl, options))
     if (parsed.kind === "sitemapindex") {
       for (const child of parsed.locs) {
-        if (!visited.has(child) && queue.length + visited.size < options.maxSitemaps) queue.push(child)
+        if (visited.has(child) || queue.includes(child)) continue
+        if (queue.length + visited.size >= options.maxSitemaps) {
+          truncated = true
+          continue
+        }
+        queue.push(child)
       }
       continue
     }
 
     for (const url of parsed.locs) {
       if (seenUrls.has(url)) continue
+      if (urls.length >= options.maxUrls) {
+        truncated = true
+        break
+      }
       seenUrls.add(url)
       urls.push(url)
-      if (urls.length >= options.maxUrls) break
     }
   }
 
-  return { urls, sitemapCount: visited.size }
+  if (queue.length > 0) truncated = true
+  return { urls, sitemapCount: visited.size, truncated }
 }
 
 export async function collectSitemapUrls(

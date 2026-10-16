@@ -122,6 +122,16 @@ const server = createServer(async (request, response) => {
       return sendJson(response, 200, { entries, newTerms })
     }
 
+
+    if (request.method === "GET" && url.pathname === "/api/sitemap/media-io") {
+      const generatorsOnly = url.searchParams.get("generatorsOnly") !== "false"
+      return sendJson(response, 200, await sitemap.listDiscoveredPages(
+        "sitemap-media-io",
+        sinceForRange(url.searchParams.get("range")),
+        generatorsOnly
+      ))
+    }
+
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {
       return sendJson(response, 200, { targets: await sitemap.listTargets() })
     }

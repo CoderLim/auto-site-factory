@@ -139,6 +139,14 @@ export async function onRequest(context) {
       }))
     }
 
+
+    if (request.method === "GET" && url.pathname === "/api/sitemap/media-io") {
+      const generatorsOnly = url.searchParams.get("generatorsOnly") !== "false"
+      return await withRepos(env, async ({ sitemap }) => json(
+        await sitemap.listDiscoveredPages("sitemap-media-io", sinceForRange(url.searchParams.get("range")), generatorsOnly)
+      ))
+    }
+
     if (request.method === "GET" && url.pathname === "/api/sitemap/targets") {
       return await withRepos(env, async ({ sitemap }) => json({ targets: await sitemap.listTargets() }))
     }

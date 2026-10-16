@@ -132,6 +132,7 @@ export const sitemapCollector: Collector = {
     const baselineOnRootChange = configBoolean(target.config, "baselineOnRootChange", true)
     const fetchMetadata = configBoolean(target.config, "fetchPageMetadata", true)
     const curlFallback = configBoolean(target.config, "curlFallback", true)
+    const requireCompleteSnapshot = configBoolean(target.config, "requireCompleteSnapshot", false)
     const trustUrlSlugAsEntity = configBoolean(target.config, "trustUrlSlugAsEntity", false)
 
     const previousRoots = Array.isArray(cursor?.sitemapUrls)
@@ -149,6 +150,9 @@ export const sitemapCollector: Collector = {
       maxUrls,
       curlFallback
     })
+    if (requireCompleteSnapshot && (collection.truncated || collection.urls.length === 0)) {
+      throw new Error(`Incomplete sitemap snapshot: ${collection.urls.length} URLs across ${collection.sitemapCount} sitemaps (truncated=${collection.truncated}); state not updated`)
+    }
     const urls = collection.urls.filter((url) => matchesFilters(url, includes, excludes))
     const entries: SitemapUrlEntry[] = urls.map((url) => ({
       url,

@@ -3,6 +3,7 @@ import test from "node:test"
 import { gzipSync } from "node:zlib"
 import type { StoredSignal } from "@factory/shared"
 import { extractEntities } from "../extraction/index.js"
+import { collectSitemap } from "./sitemap-fetcher.js"
 import {
   decodeSitemapBytes,
   extractKeywordFromUrl,
@@ -85,4 +86,27 @@ test("unconfirmed sitemap signals do not become heuristic entities", async () =>
   }
 
   assert.deepEqual(await extractEntities(signal), [])
+})
+
+test("collectSitemap marks omitted child sitemaps as truncated", async () => {
+  const docs: Record<string, string> = {
+    "https://example.com/sitemap.xml": '<sitemapindex><sitemap><loc>https://example.com/1.xml</loc></sitemap><sitemap><loc>https://example.com/2.xml</loc></sitemap></sitemapindex>',
+    "https://example.com/1.xml": '<urlset><url><loc>https://example.com/page-1</loc></url></urlset>'
+  }
+  const mockedFetch = (async (input: RequestInfo | URL) => new Response(docs[String(input)] ?? "", { status: docs[String(input)] ? 200 : 404 })) as typeof fetch
+  const result = await collectSitemap(["https://example.com/sitemap.xml"], mockedFetch, {
+    userAgent: "test", timeoutSeconds: 5, maxSitemaps: 2, maxUrls: 100, curlFallback: false
+  })
+  assert.deepEqual(result.urls, ["https://example.com/page-1"])
+  assert.equal(result.truncated, true)
+})
+
+test("collectSitemap marks truncated URL sets", async () => {
+  const sitemap = '<urlset><url><loc>https://example.com/a</loc></url><url><loc>https://example.com/b</loc></url></urlset>'
+  const mockedFetch = (async () => new Response(sitemap, { status: 200 })) as typeof fetch
+  const result = await collectSitemap(["https://example.com/sitemap.xml"], mockedFetch, {
+    userAgent: "test", timeoutSeconds: 5, maxSitemaps: 5, maxUrls: 1, curlFallback: false
+  })
+  assert.deepEqual(result.urls, ["https://example.com/a"])
+  assert.equal(result.truncated, true)
 })

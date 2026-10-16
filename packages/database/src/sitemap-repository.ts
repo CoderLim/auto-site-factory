@@ -30,6 +30,23 @@ export interface SitemapSignalRow {
   discoveredAt: string
 }
 
+
+export interface SitemapDiscoveredPage {
+  url: string
+  keyword?: string
+  pageTitle?: string
+  h1?: string
+  firstSeenAt: string
+  lastSeenAt: string
+  active: boolean
+}
+
+export interface SitemapDiscoveredResult {
+  pages: SitemapDiscoveredPage[]
+  discoveredCount: number
+  generatorCount: number
+}
+
 export interface SitemapRunRow {
   runId: string
   targetId: string
@@ -244,6 +261,59 @@ export class SitemapRepository implements SitemapStateStore {
         discoveredAt: new Date(String(row.discovered_at)).toISOString()
       }
     })
+  }
+
+
+  /**
+   * Only URLs that generated a RawSignal are included. The first sitemap snapshot
+   * records existing URLs as a baseline without signals, so it is excluded here.
+   * first_seen_at is our monitor's discovery time, NOT Google first indexing.
+   */
+  async listDiscoveredPages(
+    targetId: string,
+    since: Date,
+    generatorsOnly = true,
+    limit = 200
+  ): Promise<SitemapDiscoveredResult> {
+    const titleWords = `(' ' || regexp_replace(lower(COALESCE(su.page_title, '')), '[^a-z0-9]+', ' ', 'g') || ' ')`
+    const titleMatchesGenerator = `${titleWords} LIKE '% ai %' AND ${titleWords} LIKE '% generator %'`
+    const baseWhere = `su.source_target_id = $1 AND su.first_seen_at >= $2::timestamptz
+      AND EXISTS (
+        SELECT 1 FROM raw_signals rs
+        WHERE rs.source_type = 'sitemap'
+          AND rs.source_target_id = su.source_target_id
+          AND rs.external_id = su.url
+      )`
+    const params = [targetId, since.toISOString()]
+    const [counts, result] = await Promise.all([
+      this.db.query<{ discovered_count: number; generator_count: number }>(
+        `SELECT COUNT(*)::int AS discovered_count,
+           COUNT(*) FILTER (WHERE ${titleMatchesGenerator})::int AS generator_count
+         FROM sitemap_urls su WHERE ${baseWhere}`,
+        params
+      ),
+      this.db.query(
+        `SELECT su.url, su.keyword, su.page_title, su.h1, su.first_seen_at, su.last_seen_at, su.is_active
+         FROM sitemap_urls su
+         WHERE ${baseWhere} ${generatorsOnly ? `AND ${titleMatchesGenerator}` : ""}
+         ORDER BY su.first_seen_at DESC, su.url ASC
+         LIMIT $3`,
+        [...params, Math.max(1, Math.min(limit, 500))]
+      )
+    ])
+    return {
+      discoveredCount: Number(counts.rows[0]?.discovered_count ?? 0),
+      generatorCount: Number(counts.rows[0]?.generator_count ?? 0),
+      pages: result.rows.map((row) => ({
+        url: String(row.url),
+        keyword: row.keyword ? String(row.keyword) : undefined,
+        pageTitle: row.page_title ? String(row.page_title) : undefined,
+        h1: row.h1 ? String(row.h1) : undefined,
+        firstSeenAt: new Date(String(row.first_seen_at)).toISOString(),
+        lastSeenAt: new Date(String(row.last_seen_at)).toISOString(),
+        active: Boolean(row.is_active)
+      }))
+    }
   }
 
   async listRuns(limit = 50): Promise<SitemapRunRow[]> {
