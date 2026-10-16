@@ -6,6 +6,7 @@ import { installViralRadarCardFilters } from "./viral-radar-filter"
 import "./styles.css"
 import "./keywords.css"
 import "./viral-radar.css"
+import "./media-io.css"
 
 installGlobalLoadingFetch()
 
