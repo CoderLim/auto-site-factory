@@ -131,12 +131,17 @@ export type MediaIoPage = {
   firstSeenAt: string
   lastSeenAt: string
   active: boolean
+  isBaseline: boolean
+  matchSource?: "title" | "url"
 }
 
 export type MediaIoPagesResult = {
   pages: MediaIoPage[]
   discoveredCount: number
   generatorCount: number
+  baselineCount: number
+  baselineGeneratorCount: number
+  matchedCount: number
 }
 
 export type SitemapRun = {
@@ -255,8 +260,13 @@ export const api = {
     if (options.newTermsOnly) params.set("newTermsOnly", "true")
     return request<{ entries: AppChartEntry[]; newTerms: AppChartNewTerm[] }>(`/api/app-charts?${params}`)
   },
-  mediaIoPages: (range: string, generatorsOnly = true) => {
-    const params = new URLSearchParams({ range, generatorsOnly: String(generatorsOnly) })
+  mediaIoPages: (
+    range: string,
+    generatorsOnly = true,
+    view: "all" | "new" | "baseline" = "all",
+    search = ""
+  ) => {
+    const params = new URLSearchParams({ range, generatorsOnly: String(generatorsOnly), view, search })
     return request<MediaIoPagesResult>(`/api/sitemap/media-io?${params}`)
   },
   targets: () => request<{ targets: SitemapTarget[] }>("/api/sitemap/targets"),

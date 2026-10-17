@@ -125,10 +125,15 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/api/sitemap/media-io") {
       const generatorsOnly = url.searchParams.get("generatorsOnly") !== "false"
+      const rawView = url.searchParams.get("view")
+      const view = rawView === "new" || rawView === "baseline" ? rawView : "all"
+      const search = (url.searchParams.get("search") ?? "").slice(0, 200)
       return sendJson(response, 200, await sitemap.listDiscoveredPages(
         "sitemap-media-io",
         sinceForRange(url.searchParams.get("range")),
-        generatorsOnly
+        generatorsOnly,
+        view,
+        search
       ))
     }
 

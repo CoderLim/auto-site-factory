@@ -39,12 +39,17 @@ export interface SitemapDiscoveredPage {
   firstSeenAt: string
   lastSeenAt: string
   active: boolean
+  isBaseline: boolean
+  matchSource?: "title" | "url"
 }
 
 export interface SitemapDiscoveredResult {
   pages: SitemapDiscoveredPage[]
   discoveredCount: number
   generatorCount: number
+  baselineCount: number
+  baselineGeneratorCount: number
+  matchedCount: number
 }
 
 export interface SitemapRunRow {
@@ -265,45 +270,79 @@ export class SitemapRepository implements SitemapStateStore {
 
 
   /**
-   * Only URLs that generated a RawSignal are included. The first sitemap snapshot
-   * records existing URLs as a baseline without signals, so it is excluded here.
-   * first_seen_at is our monitor's discovery time, NOT Google first indexing.
+   * New = URL first seen after initial sitemap baseline, evidenced by a RawSignal.
+   * Baseline = URL already present on initial crawl. Baseline page titles were not
+   * fetched, so matching its URL slug is explicitly a candidate, not a title match.
+   * Neither first_seen_at nor last_seen_at represents Google's first indexing date.
    */
   async listDiscoveredPages(
     targetId: string,
     since: Date,
     generatorsOnly = true,
+    view: "all" | "new" | "baseline" = "all",
+    search = "",
     limit = 200
   ): Promise<SitemapDiscoveredResult> {
     const titleWords = `(' ' || regexp_replace(lower(COALESCE(su.page_title, '')), '[^a-z0-9]+', ' ', 'g') || ' ')`
-    const titleMatchesGenerator = `${titleWords} LIKE '% ai %' AND ${titleWords} LIKE '% generator %'`
-    const baseWhere = `su.source_target_id = $1 AND su.first_seen_at >= $2::timestamptz
-      AND EXISTS (
-        SELECT 1 FROM raw_signals rs
-        WHERE rs.source_type = 'sitemap'
-          AND rs.source_target_id = su.source_target_id
-          AND rs.external_id = su.url
-      )`
+    const urlWords = `(' ' || regexp_replace(lower(su.url), '[^a-z0-9]+', ' ', 'g') || ' ')`
+    const titleMatch = `(${titleWords} LIKE '% ai %' AND ${titleWords} LIKE '% generator %')`
+    const urlMatch = `(${urlWords} LIKE '% ai %' AND ${urlWords} LIKE '% generator %')`
+    const generatorMatch = `(${titleMatch} OR ((su.page_title IS NULL OR su.page_title = '') AND ${urlMatch}))`
+    const isNew = `EXISTS (
+      SELECT 1 FROM raw_signals rs
+      WHERE rs.source_type = 'sitemap'
+        AND rs.source_target_id = su.source_target_id
+        AND rs.external_id = su.url
+    )`
+    const newInRange = `(${isNew} AND su.first_seen_at >= $2::timestamptz)`
+    const baseline = `NOT (${isNew})`
+    const viewWhere = view === "new"
+      ? newInRange
+      : view === "baseline"
+        ? baseline
+        : `(${newInRange} OR ${baseline})`
+    const searchWhere = `($4::text = '' OR
+      su.url ILIKE '%' || $4 || '%'
+      OR COALESCE(su.page_title, '') ILIKE '%' || $4 || '%'
+      OR COALESCE(su.keyword, '') ILIKE '%' || $4 || '%')`
     const params = [targetId, since.toISOString()]
     const [counts, result] = await Promise.all([
-      this.db.query<{ discovered_count: number; generator_count: number }>(
-        `SELECT COUNT(*)::int AS discovered_count,
-           COUNT(*) FILTER (WHERE ${titleMatchesGenerator})::int AS generator_count
-         FROM sitemap_urls su WHERE ${baseWhere}`,
+      this.db.query<{
+        discovered_count: number
+        generator_count: number
+        baseline_count: number
+        baseline_generator_count: number
+      }>(
+        `SELECT COUNT(*) FILTER (WHERE ${newInRange})::int AS discovered_count,
+           COUNT(*) FILTER (WHERE ${newInRange} AND ${generatorMatch})::int AS generator_count,
+           COUNT(*) FILTER (WHERE ${baseline})::int AS baseline_count,
+           COUNT(*) FILTER (WHERE ${baseline} AND ${generatorMatch})::int AS baseline_generator_count
+         FROM sitemap_urls su WHERE su.source_target_id = $1`,
         params
       ),
       this.db.query(
-        `SELECT su.url, su.keyword, su.page_title, su.h1, su.first_seen_at, su.last_seen_at, su.is_active
+        `SELECT su.url, su.keyword, su.page_title, su.h1, su.first_seen_at, su.last_seen_at, su.is_active,
+                ${isNew} AS is_new,
+                CASE WHEN ${titleMatch} THEN 'title'
+                     WHEN su.page_title IS NULL OR su.page_title = '' THEN
+                       CASE WHEN ${urlMatch} THEN 'url' ELSE NULL END
+                     ELSE NULL END AS match_source,
+                COUNT(*) OVER()::int AS matched_count
          FROM sitemap_urls su
-         WHERE ${baseWhere} ${generatorsOnly ? `AND ${titleMatchesGenerator}` : ""}
-         ORDER BY su.first_seen_at DESC, su.url ASC
+         WHERE su.source_target_id = $1 AND ${viewWhere}
+           AND ${searchWhere}
+           ${generatorsOnly ? `AND ${generatorMatch}` : ""}
+         ORDER BY is_new DESC, su.first_seen_at DESC, su.url ASC
          LIMIT $3`,
-        [...params, Math.max(1, Math.min(limit, 500))]
+        [targetId, since.toISOString(), Math.max(1, Math.min(limit, 500)), search.trim()]
       )
     ])
     return {
       discoveredCount: Number(counts.rows[0]?.discovered_count ?? 0),
       generatorCount: Number(counts.rows[0]?.generator_count ?? 0),
+      baselineCount: Number(counts.rows[0]?.baseline_count ?? 0),
+      baselineGeneratorCount: Number(counts.rows[0]?.baseline_generator_count ?? 0),
+      matchedCount: Number(result.rows[0]?.matched_count ?? 0),
       pages: result.rows.map((row) => ({
         url: String(row.url),
         keyword: row.keyword ? String(row.keyword) : undefined,
@@ -311,7 +350,11 @@ export class SitemapRepository implements SitemapStateStore {
         h1: row.h1 ? String(row.h1) : undefined,
         firstSeenAt: new Date(String(row.first_seen_at)).toISOString(),
         lastSeenAt: new Date(String(row.last_seen_at)).toISOString(),
-        active: Boolean(row.is_active)
+        active: Boolean(row.is_active),
+        isBaseline: !Boolean(row.is_new),
+        matchSource: row.match_source === "title" || row.match_source === "url"
+          ? row.match_source
+          : undefined
       }))
     }
   }
