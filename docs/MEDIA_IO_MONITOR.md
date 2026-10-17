@@ -3,9 +3,10 @@
 The Dashboard has an independent `/discovery/media-io` page. Target: `sitemap-media-io`, configured in `config/source-targets.json`.
 
 - Every Discovery Cron run polls `https://www.media.io/sitemap.xml` and its child sitemaps.
-- First **successful complete** crawl writes a baseline into `sitemap_urls`; historical URLs do not appear in the "new" report.
+- First **successful complete** crawl writes a baseline into `sitemap_urls`; historical URLs are labeled "baseline", excluded from "new" counters, and visible via the default "all" and dedicated "baseline" views.
 - Subsequent new URLs are written to `sitemap_urls`, enriched with page `title` and `h1`, and only reported once.
-- Dashboard initially filters titles containing both the standalone words "AI" and "Generator", regardless of separation or word order. Turning that option off shows all newly discovered URLs (including rows with missing titles).
+- Dashboard initially filters for standalone words "AI" and "Generator": page title when available, otherwise URL tokens as **unverified candidates**. Baseline titles are not fetched, so the baseline view does not claim verified title matches. Turning the filter off displays all URL types.
+- Server-side search covers the full baseline (not just the first 200 rows); counts report new versus historical baseline separately. Date range applies only to post-baseline new URLs.
 - Times are **monitor first-seen**, not first indexed by Google or necessarily first published.
 - Cap on displayed results: 200 most recent per date range. Counts are computed across the full range.
 - Settings: `requireCompleteSnapshot=true` fails before reconciliation if a sitemap child or URL limit is hit, avoiding false new URLs from partial coverage.
